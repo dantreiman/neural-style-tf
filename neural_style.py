@@ -244,7 +244,7 @@ def build_model(input_img):
   vgg_layers     = vgg_rawnet['layers'][0]
   if args.verbose: print('constructing layers...')
   net['input']   = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32))
-  net['global_step'] = tf.Variable(0, trainable=False)
+  net['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
 
   if args.verbose: print('LAYER GROUP 1')
   net['conv1_1'] = conv_layer('conv1_1', net['input'], W=get_weights(vgg_layers, 0))
@@ -634,7 +634,7 @@ def get_optimizer(loss, net):
   elif args.optimizer == 'adam_adaptive':
     learning_rate = tf.train.exponential_decay(args.learning_rate, net['global_step'],
                                                args.max_iterations, 0.96, staircase=True)
-    optimizer = tf.train.AdamOptimizer(global_step=global_step)
+    optimizer = tf.train.AdamOptimizer(learning_rate)
   return optimizer
 
 def write_video_output(frame, output_img):
