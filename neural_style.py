@@ -138,7 +138,7 @@ def parse_args():
   # optimizations
   parser.add_argument('--optimizer', type=str, 
     default='lbfgs',
-    choices=['lbfgs', 'adam'],
+    choices=['lbfgs', 'adam', 'adam_adaptive'],
     help='Loss minimization optimizer.  L-BFGS gives better results.  Adam uses less memory. (default|recommended: %(default)s)')
   
   parser.add_argument('--learning_rate', type=float, 
@@ -174,6 +174,9 @@ def parse_args():
     choices=['prev_warped', 'prev', 'random', 'content', 'style'], 
     default='prev_warped',
     help='Image used to initialize the network during the every rendering after the first frame.')
+  
+  parser.add_argument('--flow_input_dir', type=str,
+    help='Relative or absolute directory path to optical flow files. Defaults to video_input_dir if not specified.')
   
   parser.add_argument('--video_input_dir', type=str, 
     default='./video_input',
@@ -241,6 +244,7 @@ def build_model(input_img):
   vgg_layers     = vgg_rawnet['layers'][0]
   if args.verbose: print('constructing layers...')
   net['input']   = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32))
+  net['global_step'] = tf.Variable(0, trainable=False)
 
   if args.verbose: print('LAYER GROUP 1')
   net['conv1_1'] = conv_layer('conv1_1', net['input'], W=get_weights(vgg_layers, 0))
@@ -461,7 +465,7 @@ def sum_longterm_temporal_losses(sess, net, frame, input_img):
 
 def sum_shortterm_temporal_losses(sess, net, frame, input_img):
   x = sess.run(net['input'].assign(input_img))
-  prev_frame = frame - 1
+  prev_frame = max(frame - 1, 0)
   w = get_prev_warped_frame(frame)
   c = get_content_weights(frame, prev_frame)
   loss = temporal_loss(x, w, c)
@@ -580,7 +584,7 @@ def stylize(content_img, style_imgs, init_img, frame=None):
       L_total   += gamma * L_temporal
 
     # optimization algorithm
-    optimizer = get_optimizer(L_total)
+    optimizer = get_optimizer(L_total, net)
 
     if args.optimizer == 'adam':
       minimize_with_adam(sess, net, optimizer, init_img, L_total)
@@ -606,7 +610,7 @@ def minimize_with_lbfgs(sess, net, optimizer, init_img):
 
 def minimize_with_adam(sess, net, optimizer, init_img, loss):
   if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER')
-  train_op = optimizer.minimize(loss)
+  train_op = optimizer.minimize(loss, global_step=net['global_step'])
   init_op = tf.global_variables_initializer()
   sess.run(init_op)
   sess.run(net['input'].assign(init_img))
@@ -618,7 +622,7 @@ def minimize_with_adam(sess, net, optimizer, init_img, loss):
       print("At iterate {}\tf=  {}".format(iterations, curr_loss))
     iterations += 1
 
-def get_optimizer(loss):
+def get_optimizer(loss, net):
   print_iterations = args.print_iterations if args.verbose else 0
   if args.optimizer == 'lbfgs':
     optimizer = tf.contrib.opt.ScipyOptimizerInterface(
@@ -627,10 +631,14 @@ def get_optimizer(loss):
                   'disp': print_iterations})
   elif args.optimizer == 'adam':
     optimizer = tf.train.AdamOptimizer(args.learning_rate)
+  elif args.optimizer == 'adam_adaptive':
+    learning_rate = tf.train.exponential_decay(args.learning_rate, net['global_step'],
+                                               args.max_iterations, 0.96, staircase=True)
+    optimizer = tf.train.AdamOptimizer(global_step=global_step)
   return optimizer
 
 def write_video_output(frame, output_img):
-  fn = args.content_frame_frmt.format(str(frame).zfill(4))
+  fn = args.content_frame_frmt.format(str(frame).zfill(5))
   path = os.path.join(args.video_output_dir, fn)
   write_image(path, output_img)
 
@@ -695,7 +703,7 @@ def get_init_image(init_type, content_img, style_imgs, frame=None):
     return init_img
 
 def get_content_frame(frame):
-  fn = args.content_frame_frmt.format(str(frame).zfill(4))
+  fn = args.content_frame_frmt.format(str(frame).zfill(5))
   path = os.path.join(args.video_input_dir, fn)
   img = read_image(path)
   return img
@@ -750,19 +758,25 @@ def get_mask_image(mask_img, width, height):
 
 def get_prev_frame(frame):
   # previously stylized frame
-  prev_frame = frame - 1
-  fn = args.content_frame_frmt.format(str(prev_frame).zfill(4))
+  prev_frame = max(frame - 1, 0)
+  fn = args.content_frame_frmt.format(str(prev_frame).zfill(5))
   path = os.path.join(args.video_output_dir, fn)
   img = cv2.imread(path, cv2.IMREAD_COLOR)
   check_image(img, path)
   return img
 
+def get_flow_input_dir():
+  if args.flow_input_dir:
+    return args.flow_input_dir
+  else:
+    return args.video_input_dir
+
 def get_prev_warped_frame(frame):
   prev_img = get_prev_frame(frame)
-  prev_frame = frame - 1
+  prev_frame = max(frame - 1, 0)
   # backwards flow: current frame -> previous frame
   fn = args.backward_optical_flow_frmt.format(str(frame), str(prev_frame))
-  path = os.path.join(args.video_input_dir, fn)
+  path = os.path.join(get_flow_input_dir(), fn)
   flow = read_flow_file(path)
   warped_img = warp_image(prev_img, flow).astype(np.float32)
   img = preprocess(warped_img)
@@ -771,8 +785,8 @@ def get_prev_warped_frame(frame):
 def get_content_weights(frame, prev_frame):
   forward_fn = args.content_weights_frmt.format(str(prev_frame), str(frame))
   backward_fn = args.content_weights_frmt.format(str(frame), str(prev_frame))
-  forward_path = os.path.join(args.video_input_dir, forward_fn)
-  backward_path = os.path.join(args.video_input_dir, backward_fn)
+  forward_path = os.path.join(get_flow_input_dir(), forward_fn)
+  backward_path = os.path.join(get_flow_input_dir(), backward_fn)
   forward_weights = read_weights_file(forward_path)
   backward_weights = read_weights_file(backward_path)
   return forward_weights #, backward_weights
@@ -827,9 +841,12 @@ def render_single_image():
 
 def render_video():
   for frame in range(args.start_frame, args.end_frame+1):
+    # If start_frame > 1, assume we are resuming a previously killed job.
+    # TODO(dtreiman): check for existance of previous frame instead.
+    assume_resume = args.start_frame > 1
     with tf.Graph().as_default():
       print('\n---- RENDERING VIDEO FRAME: {}/{} ----\n'.format(frame, args.end_frame))
-      if frame == 1:
+      if not assume_resume and frame == args.start_frame:
         content_frame = get_content_frame(frame)
         style_imgs = get_style_images(content_frame)
         init_img = get_init_image(args.first_frame_type, content_frame, style_imgs, frame)
