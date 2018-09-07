@@ -229,88 +229,6 @@ def parse_args():
 
   return args
 
-'''
-  pre-trained vgg19 convolutional neural network
-  remark: layers are manually initialized for clarity.
-'''
-
-def build_model(input_img):
-  if args.verbose: print('\nBUILDING VGG-19 NETWORK')
-  net = {}
-  _, h, w, d     = input_img.shape
-  
-  if args.verbose: print('loading model weights...')
-  vgg_rawnet     = scipy.io.loadmat(args.model_weights)
-  vgg_layers     = vgg_rawnet['layers'][0]
-  if args.verbose: print('constructing layers...')
-  net['input']   = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32))
-  net['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
-
-  if args.verbose: print('LAYER GROUP 1')
-  net['conv1_1'] = conv_layer('conv1_1', net['input'], W=get_weights(vgg_layers, 0))
-  net['relu1_1'] = relu_layer('relu1_1', net['conv1_1'], b=get_bias(vgg_layers, 0))
-
-  net['conv1_2'] = conv_layer('conv1_2', net['relu1_1'], W=get_weights(vgg_layers, 2))
-  net['relu1_2'] = relu_layer('relu1_2', net['conv1_2'], b=get_bias(vgg_layers, 2))
-  
-  net['pool1']   = pool_layer('pool1', net['relu1_2'])
-
-  if args.verbose: print('LAYER GROUP 2')  
-  net['conv2_1'] = conv_layer('conv2_1', net['pool1'], W=get_weights(vgg_layers, 5))
-  net['relu2_1'] = relu_layer('relu2_1', net['conv2_1'], b=get_bias(vgg_layers, 5))
-  
-  net['conv2_2'] = conv_layer('conv2_2', net['relu2_1'], W=get_weights(vgg_layers, 7))
-  net['relu2_2'] = relu_layer('relu2_2', net['conv2_2'], b=get_bias(vgg_layers, 7))
-  
-  net['pool2']   = pool_layer('pool2', net['relu2_2'])
-  
-  if args.verbose: print('LAYER GROUP 3')
-  net['conv3_1'] = conv_layer('conv3_1', net['pool2'], W=get_weights(vgg_layers, 10))
-  net['relu3_1'] = relu_layer('relu3_1', net['conv3_1'], b=get_bias(vgg_layers, 10))
-
-  net['conv3_2'] = conv_layer('conv3_2', net['relu3_1'], W=get_weights(vgg_layers, 12))
-  net['relu3_2'] = relu_layer('relu3_2', net['conv3_2'], b=get_bias(vgg_layers, 12))
-
-  net['conv3_3'] = conv_layer('conv3_3', net['relu3_2'], W=get_weights(vgg_layers, 14))
-  net['relu3_3'] = relu_layer('relu3_3', net['conv3_3'], b=get_bias(vgg_layers, 14))
-
-  net['conv3_4'] = conv_layer('conv3_4', net['relu3_3'], W=get_weights(vgg_layers, 16))
-  net['relu3_4'] = relu_layer('relu3_4', net['conv3_4'], b=get_bias(vgg_layers, 16))
-
-  net['pool3']   = pool_layer('pool3', net['relu3_4'])
-
-  if args.verbose: print('LAYER GROUP 4')
-  net['conv4_1'] = conv_layer('conv4_1', net['pool3'], W=get_weights(vgg_layers, 19))
-  net['relu4_1'] = relu_layer('relu4_1', net['conv4_1'], b=get_bias(vgg_layers, 19))
-
-  net['conv4_2'] = conv_layer('conv4_2', net['relu4_1'], W=get_weights(vgg_layers, 21))
-  net['relu4_2'] = relu_layer('relu4_2', net['conv4_2'], b=get_bias(vgg_layers, 21))
-
-  net['conv4_3'] = conv_layer('conv4_3', net['relu4_2'], W=get_weights(vgg_layers, 23))
-  net['relu4_3'] = relu_layer('relu4_3', net['conv4_3'], b=get_bias(vgg_layers, 23))
-
-  net['conv4_4'] = conv_layer('conv4_4', net['relu4_3'], W=get_weights(vgg_layers, 25))
-  net['relu4_4'] = relu_layer('relu4_4', net['conv4_4'], b=get_bias(vgg_layers, 25))
-
-  net['pool4']   = pool_layer('pool4', net['relu4_4'])
-
-  if args.verbose: print('LAYER GROUP 5')
-  net['conv5_1'] = conv_layer('conv5_1', net['pool4'], W=get_weights(vgg_layers, 28))
-  net['relu5_1'] = relu_layer('relu5_1', net['conv5_1'], b=get_bias(vgg_layers, 28))
-
-  net['conv5_2'] = conv_layer('conv5_2', net['relu5_1'], W=get_weights(vgg_layers, 30))
-  net['relu5_2'] = relu_layer('relu5_2', net['conv5_2'], b=get_bias(vgg_layers, 30))
-
-  net['conv5_3'] = conv_layer('conv5_3', net['relu5_2'], W=get_weights(vgg_layers, 32))
-  net['relu5_3'] = relu_layer('relu5_3', net['conv5_3'], b=get_bias(vgg_layers, 32))
-
-  net['conv5_4'] = conv_layer('conv5_4', net['relu5_3'], W=get_weights(vgg_layers, 34))
-  net['relu5_4'] = relu_layer('relu5_4', net['conv5_4'], b=get_bias(vgg_layers, 34))
-
-  net['pool5']   = pool_layer('pool5', net['relu5_4'])
-
-  return net
-
 def conv_layer(layer_name, layer_input, W):
   conv = tf.nn.conv2d(layer_input, W, strides=[1, 1, 1, 1], padding='SAME')
   if args.verbose: print('--{} | shape={} | weights_shape={}'.format(layer_name, 
@@ -423,23 +341,14 @@ def sum_style_losses(sess, net, style_imgs):
   total_style_loss /= float(len(style_imgs))
   return total_style_loss
 
-def sum_content_losses(sess, net, content_img):
-  sess.run(net['input'].assign(content_img))
-  content_loss = 0.
-  for layer, weight in zip(args.content_layers, args.content_layer_weights):
-    p = sess.run(net[layer])
-    x = net[layer]
-    p = tf.convert_to_tensor(p)
-    content_loss += content_layer_loss(p, x) * weight
-  content_loss /= float(len(args.content_layers))
-  return content_loss
-
 '''
   'artistic style transfer for videos' loss functions
 '''
 def temporal_loss(x, w, c):
-  c = c[np.newaxis,:,:,:]
-  D = float(x.size)
+  """prev frame, """
+  c = tf.expand_dims(c, 0)
+  print(x.get_shape().as_list())
+  D = float(np.prod(x.get_shape().as_list()))
   loss = (1. / D) * tf.reduce_sum(c * tf.nn.l2_loss(x - w))
   loss = tf.cast(loss, tf.float32)
   return loss
@@ -461,14 +370,6 @@ def sum_longterm_temporal_losses(sess, net, frame, input_img):
     w = get_prev_warped_frame(frame)
     c = get_longterm_weights(frame, prev_frame)
     loss += temporal_loss(x, w, c)
-  return loss
-
-def sum_shortterm_temporal_losses(sess, net, frame, input_img):
-  x = sess.run(net['input'].assign(input_img))
-  prev_frame = max(frame - 1, 0)
-  w = get_prev_warped_frame(frame)
-  c = get_content_weights(frame, prev_frame)
-  loss = temporal_loss(x, w, c)
   return loss
 
 '''
@@ -547,52 +448,185 @@ def check_image(img, path):
   if img is None:
     raise OSError(errno.ENOENT, "No such file", path)
 
-'''
-  rendering -- where the magic happens
-'''
-def stylize(content_img, style_imgs, init_img, frame=None):
-  with tf.device(args.device), tf.Session() as sess:
-    # setup network
-    net = build_model(content_img)
+class Model:
+  def __init__(self):
+    with tf.device(args.device):
+      self.sess = tf.Session()
+      self.net = {}
+      self.update_content_ops = []
+      self.content_weights = None
+      self.loss = None
+      self.optimizer = None
+      self.train_op = None
     
+  def build_network(self, input_img):
+    if args.verbose: print('\nBUILDING VGG-19 NETWORK')
+    net = {}
+    _, h, w, d     = input_img.shape
+
+    if args.verbose: print('loading model weights...')
+    vgg_rawnet     = scipy.io.loadmat(args.model_weights)
+    vgg_layers     = vgg_rawnet['layers'][0]
+    if args.verbose: print('constructing layers...')
+    net['input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d)) # Used to feed images into input
+    net['input']   = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32))
+    net['input_assign'] = net['input'].assign(net['input_in'])
+    net['prev_input']   = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=False)  # Previous input for temporal consistency
+    net['prev_input_assign'] = net['prev_input'].assign(net['input_in'])
+    net['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
+
+    if args.verbose: print('LAYER GROUP 1')
+    net['conv1_1'] = conv_layer('conv1_1', net['input'], W=get_weights(vgg_layers, 0))
+    net['relu1_1'] = relu_layer('relu1_1', net['conv1_1'], b=get_bias(vgg_layers, 0))
+
+    net['conv1_2'] = conv_layer('conv1_2', net['relu1_1'], W=get_weights(vgg_layers, 2))
+    net['relu1_2'] = relu_layer('relu1_2', net['conv1_2'], b=get_bias(vgg_layers, 2))
+
+    net['pool1']   = pool_layer('pool1', net['relu1_2'])
+
+    if args.verbose: print('LAYER GROUP 2')  
+    net['conv2_1'] = conv_layer('conv2_1', net['pool1'], W=get_weights(vgg_layers, 5))
+    net['relu2_1'] = relu_layer('relu2_1', net['conv2_1'], b=get_bias(vgg_layers, 5))
+
+    net['conv2_2'] = conv_layer('conv2_2', net['relu2_1'], W=get_weights(vgg_layers, 7))
+    net['relu2_2'] = relu_layer('relu2_2', net['conv2_2'], b=get_bias(vgg_layers, 7))
+
+    net['pool2']   = pool_layer('pool2', net['relu2_2'])
+
+    if args.verbose: print('LAYER GROUP 3')
+    net['conv3_1'] = conv_layer('conv3_1', net['pool2'], W=get_weights(vgg_layers, 10))
+    net['relu3_1'] = relu_layer('relu3_1', net['conv3_1'], b=get_bias(vgg_layers, 10))
+
+    net['conv3_2'] = conv_layer('conv3_2', net['relu3_1'], W=get_weights(vgg_layers, 12))
+    net['relu3_2'] = relu_layer('relu3_2', net['conv3_2'], b=get_bias(vgg_layers, 12))
+
+    net['conv3_3'] = conv_layer('conv3_3', net['relu3_2'], W=get_weights(vgg_layers, 14))
+    net['relu3_3'] = relu_layer('relu3_3', net['conv3_3'], b=get_bias(vgg_layers, 14))
+
+    net['conv3_4'] = conv_layer('conv3_4', net['relu3_3'], W=get_weights(vgg_layers, 16))
+    net['relu3_4'] = relu_layer('relu3_4', net['conv3_4'], b=get_bias(vgg_layers, 16))
+
+    net['pool3']   = pool_layer('pool3', net['relu3_4'])
+
+    if args.verbose: print('LAYER GROUP 4')
+    net['conv4_1'] = conv_layer('conv4_1', net['pool3'], W=get_weights(vgg_layers, 19))
+    net['relu4_1'] = relu_layer('relu4_1', net['conv4_1'], b=get_bias(vgg_layers, 19))
+
+    net['conv4_2'] = conv_layer('conv4_2', net['relu4_1'], W=get_weights(vgg_layers, 21))
+    net['relu4_2'] = relu_layer('relu4_2', net['conv4_2'], b=get_bias(vgg_layers, 21))
+
+    net['conv4_3'] = conv_layer('conv4_3', net['relu4_2'], W=get_weights(vgg_layers, 23))
+    net['relu4_3'] = relu_layer('relu4_3', net['conv4_3'], b=get_bias(vgg_layers, 23))
+
+    net['conv4_4'] = conv_layer('conv4_4', net['relu4_3'], W=get_weights(vgg_layers, 25))
+    net['relu4_4'] = relu_layer('relu4_4', net['conv4_4'], b=get_bias(vgg_layers, 25))
+
+    net['pool4']   = pool_layer('pool4', net['relu4_4'])
+
+    if args.verbose: print('LAYER GROUP 5')
+    net['conv5_1'] = conv_layer('conv5_1', net['pool4'], W=get_weights(vgg_layers, 28))
+    net['relu5_1'] = relu_layer('relu5_1', net['conv5_1'], b=get_bias(vgg_layers, 28))
+
+    net['conv5_2'] = conv_layer('conv5_2', net['relu5_1'], W=get_weights(vgg_layers, 30))
+    net['relu5_2'] = relu_layer('relu5_2', net['conv5_2'], b=get_bias(vgg_layers, 30))
+
+    net['conv5_3'] = conv_layer('conv5_3', net['relu5_2'], W=get_weights(vgg_layers, 32))
+    net['relu5_3'] = relu_layer('relu5_3', net['conv5_3'], b=get_bias(vgg_layers, 32))
+
+    net['conv5_4'] = conv_layer('conv5_4', net['relu5_3'], W=get_weights(vgg_layers, 34))
+    net['relu5_4'] = relu_layer('relu5_4', net['conv5_4'], b=get_bias(vgg_layers, 34))
+
+    net['pool5']   = pool_layer('pool5', net['relu5_4'])
+    self.net = net
+    return net
+    
+  def load(self, init_img, content_img, style_imgs):
+    """Build model and load weights.  Content image is only used for computing size."""
+    # setup network
+    net = self.build_network(content_img)
+
     # style loss
     if args.style_mask:
-      L_style = sum_masked_style_losses(sess, net, style_imgs)
+      L_style = sum_masked_style_losses(self.sess, net, style_imgs)
     else:
-      L_style = sum_style_losses(sess, net, style_imgs)
-    
+      L_style = sum_style_losses(self.sess, net, style_imgs)
+
     # content loss
-    L_content = sum_content_losses(sess, net, content_img)
-    
+    L_content = self.setup_content_loss(content_img)
+
     # denoising loss
     L_tv = tf.image.total_variation(net['input'])
-    
+
     # loss weights
     alpha = args.content_weight
     beta  = args.style_weight
     theta = args.tv_weight
-    
+
     # total loss
     L_total  = alpha * L_content
     L_total += beta  * L_style
     L_total += theta * L_tv
-    
+
     # video temporal loss
-    if args.video and frame > 1:
+    if args.video:
       gamma      = args.temporal_weight
-      L_temporal = sum_shortterm_temporal_losses(sess, net, frame, init_img)
+      L_temporal = self.setup_shortterm_temporal_loss()
       L_total   += gamma * L_temporal
 
     # optimization algorithm
-    optimizer = get_optimizer(L_total, net)
+    self.loss = L_total
+    self.optimizer = self.get_optimizer(self.loss)
+    self.train_op = self.optimizer.minimize(self.loss, global_step=net['global_step'])
 
-    if args.optimizer == 'adam':
-      minimize_with_adam(sess, net, optimizer, init_img, L_total)
+  def setup_shortterm_temporal_loss(self):
+    c = get_content_weights(args.start_frame, args.start_frame + 1)
+    # Initializes content weights to all zeros for first frame
+    self.content_weights = tf.Variable(np.zeros_like(c), trainable=False)
+    loss = temporal_loss(self.net['input'], self.net['prev_input'], self.content_weights)
+    return loss
+
+  def update_shortterm_temporal_loss(self, frame):
+    if frame is None or frame == args.start_frame:
+      return
+    prev_frame = max(frame - 1, 0)
+    w = get_prev_warped_frame(frame)
+    c = get_content_weights(frame, prev_frame)
+    self.sess.run(self.net['prev_input_assign'], feed_dict={self.net['input_in']: w})
+    self.sess.run(self.content_weights.assign(c))
+
+  def setup_content_loss(self, content_img):
+    net = self.net
+    self.sess.run(net['input_assign'], feed_dict={net['input_in']: content_img})
+    content_loss = 0.
+    content_layers = []
+    content_vars = []
+    for layer_name, weight in zip(args.content_layers, args.content_layer_weights):
+      layer_t = net[layer_name]
+      activations = self.sess.run(layer_t)
+      content_t = tf.Variable(activations, trainable=False)
+      content_loss += content_layer_loss(content_t, layer_t) * weight
+      content_layers.append(layer_t)
+      content_vars.append(content_t)
+    self.update_content_ops = [v.assign(l) for v,l in zip(content_vars, content_layers)]
+    content_loss /= float(len(args.content_layers))
+    return content_loss
+
+  def update_content_loss(self, content_img):
+    self.sess.run(self.net['input_assign'], feed_dict={self.net['input_in']: content_img})
+    self.sess.run(self.update_content_ops)
+    
+  def stylize(self, content_img, style_imgs, init_img, frame=None):
+    """Do gradient descent, save style image"""
+    self.update_content_loss(content_img)
+    self.update_shortterm_temporal_loss(frame)
+    self.sess.run(self.net['input_assign'], feed_dict={ self.net['input_in'] : init_img })
+    if args.optimizer in ('adam', 'adam_adaptive'):
+      self.minimize_with_adam(init_img, self.loss)
     elif args.optimizer == 'lbfgs':
-      minimize_with_lbfgs(sess, net, optimizer, init_img)
-    
+      self.minimize_with_lbfgs(init_img)
+
     output_img = sess.run(net['input'])
-    
+
     if args.original_colors:
       output_img = convert_to_original_colors(np.copy(content_img), output_img)
 
@@ -601,41 +635,34 @@ def stylize(content_img, style_imgs, init_img, frame=None):
     else:
       write_image_output(output_img, content_img, style_imgs, init_img)
 
-def minimize_with_lbfgs(sess, net, optimizer, init_img):
-  if args.verbose: print('\nMINIMIZING LOSS USING: L-BFGS OPTIMIZER')
-  init_op = tf.global_variables_initializer()
-  sess.run(init_op)
-  sess.run(net['input'].assign(init_img))
-  optimizer.minimize(sess)
+  def minimize_with_lbfgs(self, init_img):
+    if args.verbose: print('\nMINIMIZING LOSS USING: L-BFGS OPTIMIZER')
+    self.optimizer.minimize(self.sess)
 
-def minimize_with_adam(sess, net, optimizer, init_img, loss):
-  if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER')
-  train_op = optimizer.minimize(loss, global_step=net['global_step'])
-  init_op = tf.global_variables_initializer()
-  sess.run(init_op)
-  sess.run(net['input'].assign(init_img))
-  iterations = 0
-  while (iterations < args.max_iterations):
-    sess.run(train_op)
-    if iterations % args.print_iterations == 0 and args.verbose:
-      curr_loss = loss.eval()
-      print("At iterate {}\tf=  {}".format(iterations, curr_loss))
-    iterations += 1
+  def minimize_with_adam(self, init_img, loss):
+    if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER')
+    iterations = 0
+    while (iterations < args.max_iterations):
+      self.sess.run(self.train_op)
+      if iterations % args.print_iterations == 0 and args.verbose:
+        curr_loss = loss.eval(session=self.sess)
+        print("At iterate {}\tf=  {}".format(iterations, curr_loss))
+      iterations += 1
 
-def get_optimizer(loss, net):
-  print_iterations = args.print_iterations if args.verbose else 0
-  if args.optimizer == 'lbfgs':
-    optimizer = tf.contrib.opt.ScipyOptimizerInterface(
-      loss, method='L-BFGS-B',
-      options={'maxiter': args.max_iterations,
-                  'disp': print_iterations})
-  elif args.optimizer == 'adam':
-    optimizer = tf.train.AdamOptimizer(args.learning_rate)
-  elif args.optimizer == 'adam_adaptive':
-    learning_rate = tf.train.exponential_decay(args.learning_rate, net['global_step'],
-                                               args.max_iterations, 0.96, staircase=True)
-    optimizer = tf.train.AdamOptimizer(learning_rate)
-  return optimizer
+  def get_optimizer(self, loss):
+    print_iterations = args.print_iterations if args.verbose else 0
+    if args.optimizer == 'lbfgs':
+      optimizer = tf.contrib.opt.ScipyOptimizerInterface(
+        loss, method='L-BFGS-B',
+        options={'maxiter': args.max_iterations,
+                    'disp': print_iterations})
+    elif args.optimizer == 'adam':
+      optimizer = tf.train.AdamOptimizer(args.learning_rate)
+    elif args.optimizer == 'adam_adaptive':
+      learning_rate = tf.train.exponential_decay(args.learning_rate, self.net['global_step'],
+                                                 100, 0.96, staircase=True)
+      optimizer = tf.train.AdamOptimizer(learning_rate)
+    return optimizer
 
 def write_video_output(frame, output_img):
   fn = args.content_frame_frmt.format(str(frame).zfill(5))
@@ -840,30 +867,32 @@ def render_single_image():
     print('Single image elapsed time: {}'.format(tock - tick))
 
 def render_video():
+  model = Model()
   for frame in range(args.start_frame, args.end_frame+1):
     # If start_frame > 1, assume we are resuming a previously killed job.
     # TODO(dtreiman): check for existance of previous frame instead.
     assume_resume = args.start_frame > 1
-    with tf.Graph().as_default():
-      print('\n---- RENDERING VIDEO FRAME: {}/{} ----\n'.format(frame, args.end_frame))
-      if not assume_resume and frame == args.start_frame:
-        content_frame = get_content_frame(frame)
-        style_imgs = get_style_images(content_frame)
-        init_img = get_init_image(args.first_frame_type, content_frame, style_imgs, frame)
-        args.max_iterations = args.first_frame_iterations
-        tick = time.time()
-        stylize(content_frame, style_imgs, init_img, frame)
-        tock = time.time()
-        print('Frame {} elapsed time: {}'.format(frame, tock - tick))
-      else:
-        content_frame = get_content_frame(frame)
-        style_imgs = get_style_images(content_frame)
-        init_img = get_init_image(args.init_frame_type, content_frame, style_imgs, frame)
-        args.max_iterations = args.frame_iterations
-        tick = time.time()
-        stylize(content_frame, style_imgs, init_img, frame)
-        tock = time.time()
-        print('Frame {} elapsed time: {}'.format(frame, tock - tick))
+    print('\n---- RENDERING VIDEO FRAME: {}/{} ----\n'.format(frame, args.end_frame))
+    if not assume_resume and frame == args.start_frame:
+      content_frame = get_content_frame(frame)
+      style_imgs = get_style_images(content_frame)
+      init_img = get_init_image(args.first_frame_type, content_frame, style_imgs, frame)
+      args.max_iterations = args.first_frame_iterations
+      tick = time.time()
+      model.load(init_img, content_frame, style_imgs)
+      model.sess.run(tf.global_variables_initializer())
+      model.stylize(content_frame, style_imgs, init_img, frame)
+      tock = time.time()
+      print('Frame {} elapsed time: {}'.format(frame, tock - tick))
+    else:
+      content_frame = get_content_frame(frame)
+      style_imgs = get_style_images(content_frame)
+      init_img = get_init_image(args.init_frame_type, content_frame, style_imgs, frame)
+      args.max_iterations = args.frame_iterations
+      tick = time.time()
+      model.stylize(content_frame, style_imgs, init_img, frame)
+      tock = time.time()
+      print('Frame {} elapsed time: {}'.format(frame, tock - tick))
 
 def main():
   global args
