@@ -207,11 +207,11 @@ def parse_args():
     help='Previous frames to consider for longterm temporal consistency.')
 
   parser.add_argument('--first_frame_iterations', type=int, 
-    default=100,
+    default=2000,  # 2000
     help='Maximum number of optimizer iterations of the first frame. (default: %(default)s)')
   
   parser.add_argument('--frame_iterations', type=int, 
-    default=40,  # 800
+    default=800,  # 800
     help='Maximum number of optimizer iterations for each frame after the first frame. (default: %(default)s)')
 
   args = parser.parse_args()
@@ -576,7 +576,8 @@ class Model:
     # optimization algorithm
     self.loss = L_total
     self.optimizer = self.get_optimizer(self.loss)
-    self.train_op = self.optimizer.minimize(self.loss, global_step=net['global_step'])
+    if args.optimizer in ('adam', 'adam_adaptive'):
+        self.train_op = self.optimizer.minimize(self.loss, global_step=net['global_step'])
     self.sess.run(tf.global_variables_initializer())
 
   def setup_shortterm_temporal_loss(self):
@@ -859,15 +860,16 @@ def convert_to_original_colors(content_img, stylized_img):
   return dst
 
 def render_single_image():
+  model = Model()
   content_img = get_content_image(args.content_img)
   style_imgs = get_style_images(content_img)
-  with tf.Graph().as_default():
-    print('\n---- RENDERING SINGLE IMAGE ----\n')
-    init_img = get_init_image(args.init_img_type, content_img, style_imgs)
-    tick = time.time()
-    stylize(content_img, style_imgs, init_img)
-    tock = time.time()
-    print('Single image elapsed time: {}'.format(tock - tick))
+  print('\n---- RENDERING SINGLE IMAGE ----\n')
+  init_img = get_init_image(args.init_img_type, content_img, style_imgs)
+  tick = time.time()
+  model.load(init_img, content_img, style_imgs)
+  model.stylize(content_img, style_imgs, init_img)
+  tock = time.time()
+  print('Single image elapsed time: {}'.format(tock - tick))
 
 def render_video():
   model = Model()
