@@ -53,7 +53,7 @@ def parse_args():
     help='Maximum width or height of the input images. (default: %(default)s)')
   
   parser.add_argument('--content_weight', type=float, 
-    default=5e0,
+    default=5e0,  # 5e0
     help='Weight for the content loss function. (default: %(default)s)')
   
   parser.add_argument('--style_weight', type=float, 
@@ -142,7 +142,7 @@ def parse_args():
     help='Loss minimization optimizer.  L-BFGS gives better results.  Adam uses less memory. (default|recommended: %(default)s)')
   
   parser.add_argument('--learning_rate', type=float, 
-    default=1e0, 
+    default=1e0,
     help='Learning rate parameter for the Adam optimizer. (default: %(default)s)')
   
   parser.add_argument('--max_iterations', type=int, 
@@ -207,11 +207,11 @@ def parse_args():
     help='Previous frames to consider for longterm temporal consistency.')
 
   parser.add_argument('--first_frame_iterations', type=int, 
-    default=2000,
+    default=100,
     help='Maximum number of optimizer iterations of the first frame. (default: %(default)s)')
   
   parser.add_argument('--frame_iterations', type=int, 
-    default=800,
+    default=40,  # 800
     help='Maximum number of optimizer iterations for each frame after the first frame. (default: %(default)s)')
 
   args = parser.parse_args()
@@ -469,7 +469,7 @@ class Model:
     vgg_layers     = vgg_rawnet['layers'][0]
     if args.verbose: print('constructing layers...')
     net['input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d)) # Used to feed images into input
-    net['input']   = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32))
+    net['input']   = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=True)
     net['input_assign'] = net['input'].assign(net['input_in'])
     net['prev_input']   = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=False)  # Previous input for temporal consistency
     net['prev_input_assign'] = net['prev_input'].assign(net['input_in'])
@@ -577,6 +577,7 @@ class Model:
     self.loss = L_total
     self.optimizer = self.get_optimizer(self.loss)
     self.train_op = self.optimizer.minimize(self.loss, global_step=net['global_step'])
+    self.sess.run(tf.global_variables_initializer())
 
   def setup_shortterm_temporal_loss(self):
     c = get_content_weights(args.start_frame, args.start_frame + 1)
@@ -607,6 +608,7 @@ class Model:
       content_loss += content_layer_loss(content_t, layer_t) * weight
       content_layers.append(layer_t)
       content_vars.append(content_t)
+    self.content_vars = content_vars
     self.update_content_ops = [v.assign(l) for v,l in zip(content_vars, content_layers)]
     content_loss /= float(len(args.content_layers))
     return content_loss
@@ -619,13 +621,14 @@ class Model:
     """Do gradient descent, save style image"""
     self.update_content_loss(content_img)
     self.update_shortterm_temporal_loss(frame)
-    self.sess.run(self.net['input_assign'], feed_dict={ self.net['input_in'] : init_img })
+    net = self.net
+    self.sess.run(net['input_assign'], feed_dict={ net['input_in'] : init_img })
     if args.optimizer in ('adam', 'adam_adaptive'):
       self.minimize_with_adam(init_img, self.loss)
     elif args.optimizer == 'lbfgs':
       self.minimize_with_lbfgs(init_img)
 
-    output_img = sess.run(net['input'])
+    output_img = self.sess.run(net['input'])
 
     if args.original_colors:
       output_img = convert_to_original_colors(np.copy(content_img), output_img)
@@ -880,7 +883,6 @@ def render_video():
       args.max_iterations = args.first_frame_iterations
       tick = time.time()
       model.load(init_img, content_frame, style_imgs)
-      model.sess.run(tf.global_variables_initializer())
       model.stylize(content_frame, style_imgs, init_img, frame)
       tock = time.time()
       print('Frame {} elapsed time: {}'.format(frame, tock - tick))
