@@ -138,7 +138,7 @@ def parse_args():
   # optimizations
   parser.add_argument('--optimizer', type=str, 
     default='lbfgs',
-    choices=['lbfgs', 'adam', 'adam_adaptive'],
+    choices=['lbfgs', 'adam', 'adam_adaptive', 'mixed'],
     help='Loss minimization optimizer.  L-BFGS gives better results.  Adam uses less memory. (default|recommended: %(default)s)')
   
   parser.add_argument('--learning_rate', type=float, 
@@ -456,7 +456,8 @@ class Model:
       self.update_content_ops = []
       self.content_weights = None
       self.loss = None
-      self.optimizer = None
+      self.tf_optimizer = None
+      self.sc_optimizer = None
       self.train_op = None
     
   def build_network(self, input_img):
@@ -575,9 +576,9 @@ class Model:
 
     # optimization algorithm
     self.loss = L_total
-    self.optimizer = self.get_optimizer(self.loss)
-    if args.optimizer in ('adam', 'adam_adaptive'):
-        self.train_op = self.optimizer.minimize(self.loss, global_step=net['global_step'])
+    self.setup_optimizer(self.loss)
+    if args.optimizer in ('adam', 'adam_adaptive', 'mixed'):
+        self.train_op = self.tf_optimizer.minimize(self.loss, global_step=net['global_step'])
     self.sess.run(tf.global_variables_initializer())
 
   def setup_shortterm_temporal_loss(self):
@@ -624,11 +625,10 @@ class Model:
     self.update_shortterm_temporal_loss(frame)
     net = self.net
     self.sess.run(net['input_assign'], feed_dict={ net['input_in'] : init_img })
-    if args.optimizer in ('adam', 'adam_adaptive'):
-      self.minimize_with_adam(init_img, self.loss)
-    elif args.optimizer == 'lbfgs':
-      self.minimize_with_lbfgs(init_img)
-
+    if args.optimizer in ('adam', 'adam_adaptive', 'mixed'):
+      self.minimize_with_adam(self.loss)
+    if args.optimizer in ('lbfgs', 'mixed'):
+      self.minimize_with_lbfgs()
     output_img = self.sess.run(net['input'])
 
     if args.original_colors:
@@ -639,11 +639,11 @@ class Model:
     else:
       write_image_output(output_img, content_img, style_imgs, init_img)
 
-  def minimize_with_lbfgs(self, init_img):
+  def minimize_with_lbfgs(self):
     if args.verbose: print('\nMINIMIZING LOSS USING: L-BFGS OPTIMIZER')
-    self.optimizer.minimize(self.sess)
+    self.sc_optimizer.minimize(self.sess)
 
-  def minimize_with_adam(self, init_img, loss):
+  def minimize_with_adam(self, loss):
     if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER')
     iterations = 0
     while (iterations < args.max_iterations):
@@ -656,20 +656,19 @@ class Model:
         print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
       iterations += 1
 
-  def get_optimizer(self, loss):
+  def setup_optimizer(self, loss):
     print_iterations = args.print_iterations if args.verbose else 0
-    if args.optimizer == 'lbfgs':
-      optimizer = tf.contrib.opt.ScipyOptimizerInterface(
+    if args.optimizer in ('lbfgs', 'mixed'):
+      self.sc_optimizer = tf.contrib.opt.ScipyOptimizerInterface(
         loss, method='L-BFGS-B',
         options={'maxiter': args.max_iterations,
                     'disp': print_iterations})
-    elif args.optimizer == 'adam':
-      optimizer = tf.train.AdamOptimizer(args.learning_rate)
-    elif args.optimizer == 'adam_adaptive':
+    if args.optimizer in ('adam', 'mixed'):
+      self.tf_optimizer = tf.train.AdamOptimizer(args.learning_rate)
+    if args.optimizer == 'adam_adaptive':
       self.net['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.net['global_step'],
                                                              50, 0.96, staircase=True)
-      optimizer = tf.train.AdamOptimizer(self.net['learning_rate'])
-    return optimizer
+      self.tf_optimizer = tf.train.AdamOptimizer(self.net['learning_rate'])
 
 def write_video_output(frame, output_img):
   fn = args.content_frame_frmt.format(str(frame).zfill(5))
