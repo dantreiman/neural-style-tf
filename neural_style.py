@@ -649,8 +649,11 @@ class Model:
     while (iterations < args.max_iterations):
       self.sess.run(self.train_op)
       if iterations % args.print_iterations == 0 and args.verbose:
-        curr_loss = loss.eval(session=self.sess)
-        print("At iterate {}\tf=  {}".format(iterations, curr_loss))
+        lr = args.learning_rate
+        if 'learning_rate' in self.net:
+            lr = self.sess.run(self.net['learning_rate'])
+        curr_loss = self.sess.run(loss)
+        print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
       iterations += 1
 
   def get_optimizer(self, loss):
@@ -663,9 +666,9 @@ class Model:
     elif args.optimizer == 'adam':
       optimizer = tf.train.AdamOptimizer(args.learning_rate)
     elif args.optimizer == 'adam_adaptive':
-      learning_rate = tf.train.exponential_decay(args.learning_rate, self.net['global_step'],
-                                                 100, 0.96, staircase=True)
-      optimizer = tf.train.AdamOptimizer(learning_rate)
+      self.net['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.net['global_step'],
+                                                             50, 0.96, staircase=True)
+      optimizer = tf.train.AdamOptimizer(self.net['learning_rate'])
     return optimizer
 
 def write_video_output(frame, output_img):
