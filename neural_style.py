@@ -138,7 +138,7 @@ def parse_args():
   # optimizations
   parser.add_argument('--optimizer', type=str, 
     default='lbfgs',
-    choices=['lbfgs', 'adam', 'adam_adaptive', 'mixed'],
+    choices=['lbfgs', 'adam', 'adam_adaptive', 'mixed', 'gd', 'adagrad'],
     help='Loss minimization optimizer.  L-BFGS gives better results.  Adam uses less memory. (default|recommended: %(default)s)')
   
   parser.add_argument('--learning_rate', type=float, 
@@ -345,7 +345,13 @@ def sum_style_losses(sess, net, style_imgs):
   'artistic style transfer for videos' loss functions
 '''
 def temporal_loss(x, w, c):
-  """prev frame, """
+  """Compute temporal consistency loss.
+
+  Args:
+    x (tf.Tensor) The image.
+    w (tf.Tensor) The warped frame.
+    c (tf.Tensor) The content weights.
+  """
   c = tf.expand_dims(c, 0)
   print(x.get_shape().as_list())
   D = float(np.prod(x.get_shape().as_list()))
@@ -577,7 +583,7 @@ class Model:
     # optimization algorithm
     self.loss = L_total
     self.setup_optimizer(self.loss)
-    if args.optimizer in ('adam', 'adam_adaptive', 'mixed'):
+    if args.optimizer in ('adam', 'adam_adaptive', 'mixed', 'gd', 'adagrad'):
         self.train_op = self.tf_optimizer.minimize(self.loss, global_step=net['global_step'])
     self.sess.run(tf.global_variables_initializer())
 
@@ -629,6 +635,10 @@ class Model:
       self.minimize_with_adam(self.loss)
     if args.optimizer in ('lbfgs', 'mixed'):
       self.minimize_with_lbfgs()
+    if args.optimizer == 'gd':
+      self.minimize_with_gd(self.loss)
+    if args.optimizer == 'adagrad':
+      self.minimize_with_adagrad(self.loss)
     output_img = self.sess.run(net['input'])
 
     if args.original_colors:
@@ -656,6 +666,32 @@ class Model:
         print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
       iterations += 1
 
+  def minimize_with_gd(self, loss):
+    if args.verbose: print('\nMINIMIZING LOSS USING: GRADIENT DESCENT OPTIMIZER')
+    iterations = 0
+    while (iterations < args.max_iterations):
+      self.sess.run(self.train_op)
+      if iterations % args.print_iterations == 0 and args.verbose:
+        lr = args.learning_rate
+        if 'learning_rate' in self.net:
+            lr = self.sess.run(self.net['learning_rate'])
+        curr_loss = self.sess.run(loss)
+        print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
+      iterations += 1
+
+  def minimize_with_adagrad(self, loss):
+    if args.verbose: print('\nMINIMIZING LOSS USING: ADAGRAD OPTIMIZER')
+    iterations = 0
+    while (iterations < args.max_iterations):
+      self.sess.run(self.train_op)
+      if iterations % args.print_iterations == 0 and args.verbose:
+        lr = args.learning_rate
+        if 'learning_rate' in self.net:
+            lr = self.sess.run(self.net['learning_rate'])
+        curr_loss = self.sess.run(loss)
+        print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
+      iterations += 1
+
   def setup_optimizer(self, loss):
     print_iterations = args.print_iterations if args.verbose else 0
     if args.optimizer in ('lbfgs', 'mixed'):
@@ -664,11 +700,18 @@ class Model:
         options={'maxiter': args.max_iterations,
                     'disp': print_iterations})
     if args.optimizer in ('adam', 'mixed'):
-      self.tf_optimizer = tf.train.AdamOptimizer(args.learning_rate)
+        self.tf_optimizer = tf.train.AdamOptimizer(args.learning_rate)
+    if args.optimizer == 'gd':
+        self.net['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.net['global_step'],
+                                                               100, 0.96, staircase=True)
+        self.tf_optimizer = tf.train.GradientDescentOptimizer(self.net['learning_rate'])
     if args.optimizer == 'adam_adaptive':
       self.net['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.net['global_step'],
-                                                             50, 0.96, staircase=True)
+                                                             100, 0.96, staircase=True)
       self.tf_optimizer = tf.train.AdamOptimizer(self.net['learning_rate'])
+    if args.optimizer == 'adagrad':
+      self.tf_optimizer = tf.train.AdagradOptimizer(args.learning_rate)
+
 
 def write_video_output(frame, output_img):
   fn = args.content_frame_frmt.format(str(frame).zfill(5))
