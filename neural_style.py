@@ -353,8 +353,8 @@ def temporal_loss(x, w, c):
     c (tf.Tensor) The content weights.
   """
   c = tf.expand_dims(c, 0)
-  print(x.get_shape().as_list())
   D = float(np.prod(x.get_shape().as_list()))
+  print('temporal loss: D = %f' % D)
   loss = (1. / D) * tf.reduce_sum(c * tf.nn.l2_loss(x - w))
   loss = tf.cast(loss, tf.float32)
   return loss
@@ -462,10 +462,22 @@ class Model:
       self.update_content_ops = []
       self.content_weights = None
       self.loss = None
+      self.debug_losses = {}
       self.tf_optimizer = None
       self.sc_optimizer = None
       self.train_op = None
-    
+      self.max_tf_iterations = None  # Max iterations of whichever TF optimizer wer're using.
+      self.max_bfgs_iterations = None  # Max iterations of L-BFGS.
+      self.set_max_iterations(args.max_iterations)
+
+  def set_max_iterations(self, max_iterations):
+    if args.optimizer == 'mixed':
+        self.max_tf_iterations = 400
+        self.max_bfgs_iterations = max_iterations
+    else:
+        self.max_tf_iterations = max_iterations
+        self.max_bfgs_iterations = max_iterations
+
   def build_network(self, input_img):
     if args.verbose: print('\nBUILDING VGG-19 NETWORK')
     net = {}
@@ -478,8 +490,9 @@ class Model:
     net['input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d)) # Used to feed images into input
     net['input']   = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=True)
     net['input_assign'] = net['input'].assign(net['input_in'])
+    net['prev_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d)) # Used to feed previous image into temporal loss function.
     net['prev_input']   = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=False)  # Previous input for temporal consistency
-    net['prev_input_assign'] = net['prev_input'].assign(net['input_in'])
+    net['prev_input_assign'] = net['prev_input'].assign(net['prev_input_in'])
     net['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
 
     if args.verbose: print('LAYER GROUP 1')
@@ -574,11 +587,17 @@ class Model:
     L_total += beta  * L_style
     L_total += theta * L_tv
 
+    #self.debug_losses['content'] = L_content
+    #self.debug_losses['style'] = L_style
+    #self.debug_losses['tv'] = L_tv
+
     # video temporal loss
-    if args.video:
-      gamma      = args.temporal_weight
-      L_temporal = self.setup_shortterm_temporal_loss()
-      L_total   += gamma * L_temporal
+    #if args.video:
+      #gamma      = args.temporal_weight
+      #gamma = 0.0
+      #L_temporal = self.setup_shortterm_temporal_loss()
+      #self.debug_losses['temporal'] = L_temporal
+      #L_total   += gamma * L_temporal
 
     # optimization algorithm
     self.loss = L_total
@@ -591,16 +610,15 @@ class Model:
     c = get_content_weights(args.start_frame, args.start_frame + 1)
     # Initializes content weights to all zeros for first frame
     self.content_weights = tf.Variable(np.zeros_like(c), trainable=False)
-    loss = temporal_loss(self.net['input'], self.net['prev_input'], self.content_weights)
-    return loss
+    return temporal_loss(self.net['input'], self.net['prev_input'], self.content_weights)
 
   def update_shortterm_temporal_loss(self, frame):
-    if frame is None or frame == args.start_frame:
+    if frame is None or frame == 0 or (frame == 1 and args.start_frame == 1):
       return
     prev_frame = max(frame - 1, 0)
     w = get_prev_warped_frame(frame)
     c = get_content_weights(frame, prev_frame)
-    self.sess.run(self.net['prev_input_assign'], feed_dict={self.net['input_in']: w})
+    self.sess.run(self.net['prev_input_assign'], feed_dict={self.net['prev_input_in']: w})
     self.sess.run(self.content_weights.assign(c))
 
   def setup_content_loss(self, content_img):
@@ -628,7 +646,7 @@ class Model:
   def stylize(self, content_img, style_imgs, init_img, frame=None):
     """Do gradient descent, save style image"""
     self.update_content_loss(content_img)
-    self.update_shortterm_temporal_loss(frame)
+    #self.update_shortterm_temporal_loss(frame)
     net = self.net
     self.sess.run(net['input_assign'], feed_dict={ net['input_in'] : init_img })
     if args.optimizer in ('adam', 'adam_adaptive', 'mixed'):
@@ -656,8 +674,11 @@ class Model:
   def minimize_with_adam(self, loss):
     if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER')
     iterations = 0
-    while (iterations < args.max_iterations):
+    while (iterations < self.max_tf_iterations):
       self.sess.run(self.train_op)
+      #if iterations % args.print_iterations == 0:
+      #  for k,v in self.debug_losses.items():
+      #    print('%s: %.5f' % (k, self.sess.run(v)))
       if iterations % args.print_iterations == 0 and args.verbose:
         lr = args.learning_rate
         if 'learning_rate' in self.net:
@@ -669,7 +690,7 @@ class Model:
   def minimize_with_gd(self, loss):
     if args.verbose: print('\nMINIMIZING LOSS USING: GRADIENT DESCENT OPTIMIZER')
     iterations = 0
-    while (iterations < args.max_iterations):
+    while (iterations < self.max_tf_iterations):
       self.sess.run(self.train_op)
       if iterations % args.print_iterations == 0 and args.verbose:
         lr = args.learning_rate
@@ -682,7 +703,7 @@ class Model:
   def minimize_with_adagrad(self, loss):
     if args.verbose: print('\nMINIMIZING LOSS USING: ADAGRAD OPTIMIZER')
     iterations = 0
-    while (iterations < args.max_iterations):
+    while (iterations < self.max_tf_iterations):
       self.sess.run(self.train_op)
       if iterations % args.print_iterations == 0 and args.verbose:
         lr = args.learning_rate
@@ -697,7 +718,7 @@ class Model:
     if args.optimizer in ('lbfgs', 'mixed'):
       self.sc_optimizer = tf.contrib.opt.ScipyOptimizerInterface(
         loss, method='L-BFGS-B',
-        options={'maxiter': args.max_iterations,
+        options={'maxiter': self.max_bfgs_iterations,
                     'disp': print_iterations})
     if args.optimizer in ('adam', 'mixed'):
         self.tf_optimizer = tf.train.AdamOptimizer(args.learning_rate)
@@ -918,6 +939,7 @@ def render_single_image():
 
 def render_video():
   model = Model()
+  needs_load = True
   for frame in range(args.start_frame, args.end_frame+1):
     # If start_frame > 1, assume we are resuming a previously killed job.
     # TODO(dtreiman): check for existance of previous frame instead.
@@ -927,9 +949,11 @@ def render_video():
       content_frame = get_content_frame(frame)
       style_imgs = get_style_images(content_frame)
       init_img = get_init_image(args.first_frame_type, content_frame, style_imgs, frame)
-      args.max_iterations = args.first_frame_iterations
+      model.set_max_iterations(args.first_frame_iterations)
       tick = time.time()
-      model.load(init_img, content_frame, style_imgs)
+      if needs_load:
+        model.load(init_img, content_frame, style_imgs)
+        needs_load = False
       model.stylize(content_frame, style_imgs, init_img, frame)
       tock = time.time()
       print('Frame {} elapsed time: {}'.format(frame, tock - tick))
@@ -937,8 +961,11 @@ def render_video():
       content_frame = get_content_frame(frame)
       style_imgs = get_style_images(content_frame)
       init_img = get_init_image(args.init_frame_type, content_frame, style_imgs, frame)
-      args.max_iterations = args.frame_iterations
+      model.set_max_iterations(args.frame_iterations)
       tick = time.time()
+      if needs_load:
+        model.load(init_img, content_frame, style_imgs)
+        needs_load = False
       model.stylize(content_frame, style_imgs, init_img, frame)
       tock = time.time()
       print('Frame {} elapsed time: {}'.format(frame, tock - tick))
