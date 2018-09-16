@@ -1,10 +1,11 @@
 import tensorflow as tf
-import numpy as np 
-import scipy.io  
-import argparse 
+import numpy as np
+import scipy.io
+import argparse
 import struct
 import errno
-import time                       
+import time
+import transform  # Borrowed from /data/notebooks/deepdream/transform.py
 import cv2
 import os
 
@@ -140,7 +141,12 @@ def parse_args():
     default='lbfgs',
     choices=['lbfgs', 'adam', 'adam_adaptive', 'mixed', 'gd', 'adagrad'],
     help='Loss minimization optimizer.  L-BFGS gives better results.  Adam uses less memory. (default|recommended: %(default)s)')
-  
+
+  parser.add_argument('--transforms', type=str, 
+    default='none',
+    choices=['none', 'translate', 'standard'],
+    help='Applies random jitter or rotation to image to smooth out neural network artifacts. (default|recommended: %(default)s)')
+
   parser.add_argument('--learning_rate', type=float, 
     default=1e0,
     help='Learning rate parameter for the Adam optimizer. (default: %(default)s)')
@@ -276,7 +282,7 @@ def content_layer_loss(p, x):
     K = 1. / (N * M)
   elif args.content_loss_function == 3:  
     K = 1. / 2.
-  loss = K * tf.reduce_sum(tf.pow((x - p), 2))
+  loss = K * tf.reduce_sum(tf.square(x - p))
   return loss
 
 def style_layer_loss(a, x):
@@ -495,8 +501,20 @@ class Model:
     net['prev_input_assign'] = net['prev_input'].assign(net['prev_input_in'])
     net['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
 
+    transforms = []
+    if args.transforms == 'standard':
+        print('Using standard transforms.')
+        transforms = transform.standard_transforms
+    elif args.transforms == 'translate':
+        print('Using translate transform only.')
+        transforms = transform.translate_only
+    t_transformed = net['input']
+    for t in transforms:
+        t_transformed = t(t_transformed)
+    net['input_transformed'] = t_transformed
+    
     if args.verbose: print('LAYER GROUP 1')
-    net['conv1_1'] = conv_layer('conv1_1', net['input'], W=get_weights(vgg_layers, 0))
+    net['conv1_1'] = conv_layer('conv1_1', net['input_transformed'], W=get_weights(vgg_layers, 0))
     net['relu1_1'] = relu_layer('relu1_1', net['conv1_1'], b=get_bias(vgg_layers, 0))
 
     net['conv1_2'] = conv_layer('conv1_2', net['relu1_1'], W=get_weights(vgg_layers, 2))
