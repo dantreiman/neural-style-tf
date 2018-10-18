@@ -54,7 +54,7 @@ def parse_args():
     help='Scale factor for rendering using superpixel method.  -1 to disable scaling.')
 
   parser.add_argument('--max_size', type=int, 
-    default=512,
+    default=4096,
     help='Maximum width or height of the input images. (default: %(default)s)')
   
   parser.add_argument('--content_weight', type=float, 
@@ -824,18 +824,19 @@ def get_init_image(init_type, content_img, style_imgs, frame=None):
 def get_content_frame(frame):
   fn = args.content_frame_frmt.format(str(frame).zfill(5))
   path = os.path.join(args.video_input_dir, fn)
-  img = read_image(path)
+  img = get_content_image(path)
   return img
 
-def get_content_image(content_img):
-  path = os.path.join(args.content_img_dir, content_img)
+def get_content_image(content_img_path):
+  path = content_img_path
    # bgr image
   img = cv2.imread(path, cv2.IMREAD_COLOR)
   check_image(img, path)
   img = img.astype(np.float32)
   scale_f = args.superpixel_scale
   if scale_f > 1.0:
-    img = cv.resize(img, (scale_f*img.shape[1], scale_f*img.shape[0]), interpolation = cv.INTER_CUBIC)
+    print('Scaling image up by %f' % scale_f)
+    img = cv2.resize(img, (int(scale_f*img.shape[1]), int(scale_f*img.shape[0])), interpolation=cv2.INTER_CUBIC)
   h, w, d = img.shape
   mx = args.max_size
   # resize if > max size
@@ -893,6 +894,12 @@ def get_flow_input_dir():
   else:
     return args.video_input_dir
 
+def resize_flow(flow, width, height):
+    """Resizes optical flow to target size"""
+    flow_img = np.transpose(flow, (1, 2, 0))
+    scaled = cv2.resize(flow_img, (width, height), interpolation=cv2.INTER_CUBIC)
+    return np.transpose(scaled, (2, 0, 1))
+
 def get_prev_warped_frame(frame):
   prev_img = get_prev_frame(frame)
   prev_frame = max(frame - 1, 0)
@@ -900,6 +907,9 @@ def get_prev_warped_frame(frame):
   fn = args.backward_optical_flow_frmt.format(str(frame), str(prev_frame))
   path = os.path.join(get_flow_input_dir(), fn)
   flow = read_flow_file(path)
+  if scale_f > 1.0:
+    print('Scaling optical flow up by %f' % scale_f)
+    flow = resize_flow(flow, prev_img.shape[1], prev_img.shape[0])
   warped_img = warp_image(prev_img, flow).astype(np.float32)
   img = preprocess(warped_img)
   return img
@@ -952,7 +962,8 @@ def convert_to_original_colors(content_img, stylized_img):
 
 def render_single_image():
   model = Model()
-  content_img = get_content_image(args.content_img)
+  content_image_path = os.path.join(args.content_img_dir, args.content_img)
+  content_img = get_content_image(content_image_path)
   style_imgs = get_style_images(content_img)
   print('\n---- RENDERING SINGLE IMAGE ----\n')
   init_img = get_init_image(args.init_img_type, content_img, style_imgs)
@@ -984,8 +995,10 @@ def render_video():
       print('Frame {} elapsed time: {}'.format(frame, tock - tick))
     else:
       content_frame = get_content_frame(frame)
+      print('content_frame size: ' + str(content.frame.shape))
       style_imgs = get_style_images(content_frame)
       init_img = get_init_image(args.init_frame_type, content_frame, style_imgs, frame)
+      print('init_img size: ' + str(content.frame.shape))
       model.set_max_iterations(args.frame_iterations)
       tick = time.time()
       if needs_load:
