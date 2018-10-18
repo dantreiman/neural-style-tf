@@ -49,6 +49,10 @@ def parse_args():
     choices=['random', 'content', 'style'], 
     help='Image used to initialize the network. (default: %(default)s)')
   
+  parser.add_argument('--superpixel_scale', type=float, 
+    default=-1,
+    help='Scale factor for rendering using superpixel method.  -1 to disable scaling.')
+
   parser.add_argument('--max_size', type=int, 
     default=512,
     help='Maximum width or height of the input images. (default: %(default)s)')
@@ -829,6 +833,9 @@ def get_content_image(content_img):
   img = cv2.imread(path, cv2.IMREAD_COLOR)
   check_image(img, path)
   img = img.astype(np.float32)
+  scale_f = args.superpixel_scale
+  if scale_f > 1.0:
+    img = cv.resize(img, (scale_f*img.shape[1], scale_f*img.shape[0]), interpolation = cv.INTER_CUBIC)
   h, w, d = img.shape
   mx = args.max_size
   # resize if > max size
