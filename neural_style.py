@@ -907,6 +907,7 @@ def get_prev_warped_frame(frame):
   fn = args.backward_optical_flow_frmt.format(str(frame), str(prev_frame))
   path = os.path.join(get_flow_input_dir(), fn)
   flow = read_flow_file(path)
+  scale_f = args.superpixel_scale
   if scale_f > 1.0:
     print('Scaling optical flow up by %f' % scale_f)
     flow = resize_flow(flow, prev_img.shape[1], prev_img.shape[0])
@@ -995,10 +996,8 @@ def render_video():
       print('Frame {} elapsed time: {}'.format(frame, tock - tick))
     else:
       content_frame = get_content_frame(frame)
-      print('content_frame size: ' + str(content.frame.shape))
       style_imgs = get_style_images(content_frame)
       init_img = get_init_image(args.init_frame_type, content_frame, style_imgs, frame)
-      print('init_img size: ' + str(content.frame.shape))
       model.set_max_iterations(args.frame_iterations)
       tick = time.time()
       if needs_load:
