@@ -911,6 +911,7 @@ def get_prev_warped_frame(frame):
   if scale_f > 1.0:
     print('Scaling optical flow up by %f' % scale_f)
     flow = resize_flow(flow, prev_img.shape[1], prev_img.shape[0])
+    flow = flow * scale_f  # Multiplies displacement vectors by scale factor.
   warped_img = warp_image(prev_img, flow).astype(np.float32)
   img = preprocess(warped_img)
   return img
