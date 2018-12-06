@@ -816,7 +816,7 @@ def get_init_image(init_type, content_img, style_imgs, frame=None):
   # only for video frames
   elif init_type == 'prev':
     init_img = get_prev_frame(frame)
-    return preprocess(init_img)
+    return preprocess(init_img.astype(np.float32))
   elif init_type == 'prev_warped':
     init_img = get_prev_warped_frame(frame)
     return init_img
