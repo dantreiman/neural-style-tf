@@ -143,8 +143,12 @@ def parse_args():
   # optimizations
   parser.add_argument('--optimizer', type=str, 
     default='lbfgs',
-    choices=['lbfgs', 'adam', 'adam_adaptive', 'mixed', 'gd', 'adagrad'],
+    choices=['lbfgs', 'adam', 'adam_adaptive', 'mixed', 'gd', 'adagrad', 'nesterov'],
     help='Loss minimization optimizer.  L-BFGS gives better results.  Adam uses less memory. (default|recommended: %(default)s)')
+
+  parser.add_argument('--early_stopping', action='store_true', help='Stop each frame early if loss change is below a target. Only works for ADAM.')
+
+  parser.add_argument('--min_iterations', type=int, default=100, help='Minimum number of iterations.  Used with early stopping.')
 
   parser.add_argument('--transforms', type=str, 
     default='none',
@@ -464,6 +468,7 @@ def check_image(img, path):
   if img is None:
     raise OSError(errno.ENOENT, "No such file", path)
 
+
 class Model:
   def __init__(self):
     with tf.device(args.device):
@@ -624,7 +629,7 @@ class Model:
     # optimization algorithm
     self.loss = L_total
     self.setup_optimizer(self.loss)
-    if args.optimizer in ('adam', 'adam_adaptive', 'mixed', 'gd', 'adagrad'):
+    if args.optimizer in ('adam', 'adam_adaptive', 'mixed', 'gd', 'adagrad', 'nesterov'):
         self.train_op = self.tf_optimizer.minimize(self.loss, global_step=net['global_step'])
     self.sess.run(tf.global_variables_initializer())
 
@@ -679,6 +684,8 @@ class Model:
       self.minimize_with_gd(self.loss)
     if args.optimizer == 'adagrad':
       self.minimize_with_adagrad(self.loss)
+    if args.optimizer == 'nesterov':
+      self.minimize_with_nesterov(self.loss)
     output_img = self.sess.run(net['input'])
 
     if args.original_colors:
@@ -693,11 +700,22 @@ class Model:
     if args.verbose: print('\nMINIMIZING LOSS USING: L-BFGS OPTIMIZER')
     self.sc_optimizer.minimize(self.sess)
 
+  def should_stop_early(self, loss_history):
+    if len(loss_history) < args.min_iterations:
+        return False
+    y2 = loss_history[-1]
+    y1 = loss_history[-2]
+    pct_change = ((y2 - y1) / y1) * 100
+    # Stop early if the loss decreased and the decrease was less than 0.01%
+    return pct_change > -0.01 and pct_change < 0
+
   def minimize_with_adam(self, loss):
     if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER')
     iterations = 0
+    loss_history = []
     while (iterations < self.max_tf_iterations):
-      self.sess.run(self.train_op)
+      _, l = self.sess.run([self.train_op, loss])
+      loss_history.append(l)
       #if iterations % args.print_iterations == 0:
       #  for k,v in self.debug_losses.items():
       #    print('%s: %.5f' % (k, self.sess.run(v)))
@@ -705,8 +723,10 @@ class Model:
         lr = args.learning_rate
         if 'learning_rate' in self.net:
             lr = self.sess.run(self.net['learning_rate'])
-        curr_loss = self.sess.run(loss)
-        print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
+        print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr))
+      if args.early_stopping and self.should_stop_early(loss_history):
+        print('Stopping early')
+        return
       iterations += 1
 
   def minimize_with_gd(self, loss):
@@ -724,6 +744,19 @@ class Model:
 
   def minimize_with_adagrad(self, loss):
     if args.verbose: print('\nMINIMIZING LOSS USING: ADAGRAD OPTIMIZER')
+    iterations = 0
+    while (iterations < self.max_tf_iterations):
+      self.sess.run(self.train_op)
+      if iterations % args.print_iterations == 0 and args.verbose:
+        lr = args.learning_rate
+        if 'learning_rate' in self.net:
+            lr = self.sess.run(self.net['learning_rate'])
+        curr_loss = self.sess.run(loss)
+        print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
+      iterations += 1
+
+  def minimize_with_nesterov(self, loss):
+    if args.verbose: print('\nMINIMIZING LOSS USING: NESTEROV MOMENTUM')
     iterations = 0
     while (iterations < self.max_tf_iterations):
       self.sess.run(self.train_op)
@@ -754,6 +787,8 @@ class Model:
       self.tf_optimizer = tf.train.AdamOptimizer(self.net['learning_rate'])
     if args.optimizer == 'adagrad':
       self.tf_optimizer = tf.train.AdagradOptimizer(args.learning_rate)
+    if args.optimizer == 'nesterov':
+      self.tf_optimizer = tf.train.MomentumOptimizer(args.learning_rate, 0.9, use_nesterov=True)
 
 
 def write_video_output(frame, output_img):
