@@ -293,6 +293,42 @@ def content_layer_loss(p, x):
   loss = K * tf.reduce_sum(tf.square(x - p))
   return loss
 
+
+def moore_neighborhood(n):
+    neighborhood = []
+    for dx in range(-n, n+1):
+        for dy in range(-n, n+1):
+            neighborhood.append((dy, dx))
+    return neighborhood
+
+
+def von_neumann_neighborhood(n):
+    neighborhood = []
+    for dx in range(-n, n+1):
+        for dy in range(-n, n+1):
+            if np.abs(dx) + np.abs(dy) <= n:
+                neighborhood.append((dy, dx))
+    return neighborhood
+
+
+def spatial_correlated_style_layer_loss(a, x):
+  """Compute style loss for specified layer.
+  
+    Args:
+      a - Activations computed for content image.
+      x - The layer.
+  """
+  _, h, w, d = a.get_shape()
+  M = h.value * w.value
+  N = d.value
+  loss = 0
+  for dy,dx in von_neumann_neighborhood(1):  # Note: order 0 corresponds to original gatys-style loss.
+    AC = shifted_correlation_matrix(a, dy, dx, M, N)
+    XC = shifted_correlation_matrix(x, dy, dx, M, N)
+    loss += (1./(4 * N**2 * M**2)) * tf.reduce_sum(tf.pow((XC - AC), 2))
+  return loss
+
+
 def style_layer_loss(a, x):
   _, h, w, d = a.get_shape()
   M = h.value * w.value
@@ -303,9 +339,18 @@ def style_layer_loss(a, x):
   return loss
 
 def gram_matrix(x, area, depth):
+  #print('x shape: %s' % str(x.shape))
   F = tf.reshape(x, (area, depth))
+  #print('F shape: %s' % str(F.shape))
   G = tf.matmul(tf.transpose(F), F)
+  #print('G shape: %s\n' % str(G.shape))
   return G
+
+def shifted_correlation_matrix(x, dy, dx, area, depth):
+  XS = tf.manip.roll(tf.manip.roll(x, dy, axis=1), dx, axis=2)
+  F = tf.reshape(x, (area, depth))
+  C = tf.matmul(tf.transpose(F), XS)
+  return C
 
 def mask_style_layer(a, x, mask_img):
   _, h, w, d = a.get_shape()
@@ -333,7 +378,7 @@ def sum_masked_style_losses(sess, net, style_imgs):
       x = net[layer]
       a = tf.convert_to_tensor(a)
       a, x = mask_style_layer(a, x, img_mask)
-      style_loss += style_layer_loss(a, x) * weight
+      style_loss += spatial_correlated_style_layer_loss(a, x) * weight  # TODO: switch based on command line args
     style_loss /= float(len(args.style_layers))
     total_style_loss += (style_loss * img_weight)
   total_style_loss /= float(len(style_imgs))
