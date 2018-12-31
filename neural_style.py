@@ -311,6 +311,10 @@ def von_neumann_neighborhood(n):
     return neighborhood
 
 
+def dilated_neighborhood(n, dx, dy):
+    return [(y*dy, x*dx) for y,x in n]
+
+
 def spatial_correlated_style_layer_loss(a, x):
   """Compute style loss for specified layer.
   
@@ -322,7 +326,7 @@ def spatial_correlated_style_layer_loss(a, x):
   M = h.value * w.value
   N = d.value
   loss = 0
-  for dy,dx in von_neumann_neighborhood(1):  # Note: order 0 corresponds to original gatys-style loss.
+  for dy,dx in dilated_neighborhood(von_neumann_neighborhood(3), 2):  # Note: order 0 corresponds to original gatys-style loss.
     AC = shifted_correlation_matrix(a, dy, dx, M, N)
     XC = shifted_correlation_matrix(x, dy, dx, M, N)
     loss += (1./(4 * N**2 * M**2)) * tf.reduce_sum(tf.pow((XC - AC), 2))
