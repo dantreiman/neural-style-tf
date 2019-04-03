@@ -93,7 +93,7 @@ def parse_args():
                         default=[0.2, 0.2, 0.2, 0.2, 0.2],
                         help='Contributions (weights) of each style layer to loss. (default: %(default)s)')
 
-    parser.add_argument('--downsample_method', type='str', default='resize',
+    parser.add_argument('--downsample_method', type=str, default='resize',
                         help='One of {gaussian, laplacian, bilinear}')
 
     parser.add_argument('--octaves', type=int, default=1,
