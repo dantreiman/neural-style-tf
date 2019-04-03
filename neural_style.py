@@ -306,7 +306,7 @@ def sum_masked_style_losses(sess, net, style_imgs):
     weights = args.style_imgs_weights
     masks = args.style_mask_imgs
     for img, img_weight, img_mask in zip(style_imgs, weights, masks):
-        sess.run(net['input'].assign(img))
+        sess.run(stem['input'].assign(img))
         style_loss = 0.
         for layer, weight in zip(args.style_layers, args.style_layer_weights):
             a = sess.run(net[layer])
@@ -324,7 +324,7 @@ def sum_style_losses(sess, net, style_imgs):
     total_style_loss = 0.
     weights = args.style_imgs_weights
     for img, img_weight in zip(style_imgs, weights):
-        sess.run(net['input'].assign(img))
+        sess.run(stem['input'].assign(img))
         style_loss = 0.
         for layer, weight in zip(args.style_layers, args.style_layer_weights):
             a = sess.run(net[layer])
@@ -369,7 +369,7 @@ def get_longterm_weights(i, j):
 
 
 def sum_longterm_temporal_losses(sess, net, frame, input_img):
-    x = sess.run(net['input'].assign(input_img))
+    x = sess.run(stem['input'].assign(input_img))
     loss = 0.
     for j in range(args.prev_frame_indices):
         prev_frame = frame - j
@@ -497,12 +497,12 @@ class Model:
         stem = {}
         stem['input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into input
         stem['input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=True)
-        stem['input_assign'] = net['input'].assign(net['input_in'])
+        stem['input_assign'] = stem['input'].assign(stem['input_in'])
         stem['prev_input_in'] = tf.placeholder(tf.float32, shape=(
             1, h, w, d))  # Used to feed previous image into temporal loss function.
         stem['prev_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32),
                                          trainable=False)  # Previous input for temporal consistency
-        stem['prev_input_assign'] = net['prev_input'].assign(net['prev_input_in'])
+        stem['prev_input_assign'] = stem['prev_input'].assign(stem['prev_input_in'])
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
 
         transforms = []
@@ -512,7 +512,7 @@ class Model:
         elif args.transforms == 'translate':
             print('Using translate transform only.')
             transforms = transform.translate_only
-        t_transformed = net['input']
+        t_transformed = stem['input']
         for t in transforms:
             t_transformed = t(t_transformed)
         stem['input_transformed'] = t_transformed
@@ -550,7 +550,7 @@ class Model:
         L_content = self.setup_content_loss(content_img)
 
         # denoising loss
-        L_tv = tf.image.total_variation(net['input'])
+        L_tv = tf.image.total_variation(stem['input'])
 
         # loss weights
         alpha = args.content_weight
@@ -578,14 +578,14 @@ class Model:
         self.loss = L_total
         self.setup_optimizer(self.loss)
         if args.optimizer in ('adam', 'adam_adaptive', 'mixed', 'gd', 'adagrad', 'nesterov'):
-            self.train_op = self.tf_optimizer.minimize(self.loss, global_step=net['global_step'])
+            self.train_op = self.tf_optimizer.minimize(self.loss, global_step=stem['global_step'])
         self.sess.run(tf.global_variables_initializer())
 
     def setup_shortterm_temporal_loss(self):
         c = get_content_weights(args.start_frame, args.start_frame + 1)
         # Initializes content weights to all zeros for first frame
         self.content_weights = tf.Variable(np.zeros_like(c), trainable=False)
-        return temporal_loss(self.net['input'], self.net['prev_input'], self.content_weights)
+        return temporal_loss(self.stem['input'], self.stem['prev_input'], self.content_weights)
 
     def update_shortterm_temporal_loss(self, frame):
         if frame is None or frame == 0 or (frame == 1 and args.start_frame == 1):
@@ -593,12 +593,12 @@ class Model:
         prev_frame = max(frame - 1, 0)
         w = get_prev_warped_frame(frame)
         c = get_content_weights(frame, prev_frame)
-        self.sess.run(self.net['prev_input_assign'], feed_dict={self.net['prev_input_in']: w})
+        self.sess.run(self.stem['prev_input_assign'], feed_dict={self.stem['prev_input_in']: w})
         self.sess.run(self.content_weights.assign(c))
 
     def setup_content_loss(self, content_img):
         net = self.net
-        self.sess.run(net['input_assign'], feed_dict={net['input_in']: content_img})
+        self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: content_img})
         content_loss = 0.
         content_layers = []
         content_vars = []
@@ -615,7 +615,7 @@ class Model:
         return content_loss
 
     def update_content_loss(self, content_img):
-        self.sess.run(self.net['input_assign'], feed_dict={self.net['input_in']: content_img})
+        self.sess.run(self.stem['input_assign'], feed_dict={self.stem['input_in']: content_img})
         self.sess.run(self.update_content_ops)
 
     def stylize(self, content_img, style_imgs, init_img, frame=None):
@@ -623,7 +623,7 @@ class Model:
         self.update_content_loss(content_img)
         # self.update_shortterm_temporal_loss(frame)
         net = self.net
-        self.sess.run(net['input_assign'], feed_dict={net['input_in']: init_img})
+        self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
         if args.optimizer in ('adam', 'adam_adaptive', 'mixed'):
             self.minimize_with_adam(self.loss)
         if args.optimizer in ('lbfgs', 'mixed'):
@@ -634,7 +634,7 @@ class Model:
             self.minimize_with_adagrad(self.loss)
         if args.optimizer == 'nesterov':
             self.minimize_with_nesterov(self.loss)
-        output_img = self.sess.run(net['input'])
+        output_img = self.sess.run(stem['input'])
 
         if args.original_colors:
             output_img = convert_to_original_colors(np.copy(content_img), output_img)
@@ -670,7 +670,7 @@ class Model:
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = args.learning_rate
                 if 'learning_rate' in self.net:
-                    lr = self.sess.run(self.net['learning_rate'])
+                    lr = self.sess.run(self.stem['learning_rate'])
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr))
             if args.early_stopping and self.should_stop_early(loss_history):
                 print('Stopping early')
@@ -685,7 +685,7 @@ class Model:
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = args.learning_rate
                 if 'learning_rate' in self.net:
-                    lr = self.sess.run(self.net['learning_rate'])
+                    lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
             iterations += 1
@@ -698,7 +698,7 @@ class Model:
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = args.learning_rate
                 if 'learning_rate' in self.net:
-                    lr = self.sess.run(self.net['learning_rate'])
+                    lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
             iterations += 1
@@ -711,7 +711,7 @@ class Model:
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = args.learning_rate
                 if 'learning_rate' in self.net:
-                    lr = self.sess.run(self.net['learning_rate'])
+                    lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
             iterations += 1
@@ -726,13 +726,13 @@ class Model:
         if args.optimizer in ('adam', 'mixed'):
             self.tf_optimizer = tf.train.AdamOptimizer(args.learning_rate)
         if args.optimizer == 'gd':
-            self.net['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.net['global_step'],
-                                                                   100, 0.96, staircase=True)
-            self.tf_optimizer = tf.train.GradientDescentOptimizer(self.net['learning_rate'])
+            self.stem['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.stem['global_step'],
+                                                                    100, 0.96, staircase=True)
+            self.tf_optimizer = tf.train.GradientDescentOptimizer(self.stem['learning_rate'])
         if args.optimizer == 'adam_adaptive':
-            self.net['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.net['global_step'],
+            self.stem['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.stem['global_step'],
                                                                    100, 0.96, staircase=True)
-            self.tf_optimizer = tf.train.AdamOptimizer(self.net['learning_rate'])
+            self.tf_optimizer = tf.train.AdamOptimizer(self.stem['learning_rate'])
         if args.optimizer == 'adagrad':
             self.tf_optimizer = tf.train.AdagradOptimizer(args.learning_rate)
         if args.optimizer == 'nesterov':
