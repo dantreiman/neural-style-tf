@@ -93,7 +93,7 @@ def parse_args():
                         default=[0.2, 0.2, 0.2, 0.2, 0.2],
                         help='Contributions (weights) of each style layer to loss. (default: %(default)s)')
 
-    parser.add_argument('--downsample_method', type=str, default='resize',
+    parser.add_argument('--downsample_method', type=str, default='gaussian',
                         help='One of {gaussian, laplacian, bilinear}')
 
     parser.add_argument('--octaves', type=int, default=1,
@@ -527,7 +527,7 @@ class Model:
         if args.downsample_method == 'laplacian':
             downsample = pyramid.laplacian
         elif args.downsample_method == 'resize':
-            downsample = pyramid.resize
+            downsample = pyramid.bilinear
 
         for i in range(args.octaves - 1):
             o = downsample(t_transformed)
