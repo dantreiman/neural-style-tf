@@ -8,6 +8,7 @@ import time
 import transform  # Borrowed from /data/notebooks/deepdream/transform.py
 import cv2
 import os
+import pyramid
 import vgg19
 
 
@@ -91,6 +92,12 @@ def parse_args():
     parser.add_argument('--style_layer_weights', nargs='+', type=float,
                         default=[0.2, 0.2, 0.2, 0.2, 0.2],
                         help='Contributions (weights) of each style layer to loss. (default: %(default)s)')
+
+    parser.add_argument('--downsample_method', type='str', default='resize',
+                        help='One of {gaussian, laplacian, bilinear}')
+
+    parser.add_argument('--octaves', type=int, default=1,
+                        help='Each octave represents an additonal level of detail in an image pyramid.')
 
     parser.add_argument('--original_colors', action='store_true',
                         help='Transfer the style but not the colors.')
@@ -464,7 +471,8 @@ class Model:
     def __init__(self):
         with tf.device(args.device):
             self.sess = tf.Session()
-            self.net = {}
+            self.stem = {}  # The common portion of the neural network, before image pyramid
+            self.nets = []  # The networks for each layer of the pyramid, from largest to smallest
             self.update_content_ops = []
             self.content_weights = None
             self.loss = None
@@ -508,8 +516,24 @@ class Model:
         for t in transforms:
             t_transformed = t(t_transformed)
         stem['input_transformed'] = t_transformed
+        self.stem = stem
+
         net, reuse_vars = vgg19.build_network(t_transformed, args.model_weights)
         self.net = net
+        nets.append(net)
+
+        # Build image pyramid if more than one octave is specified.
+        downsample = pyramid.gaussian
+        if args.downsample_method == 'laplacian':
+            downsample = pyramid.laplacian
+        elif args.downsample_method == 'resize':
+            downsample = pyramid.resize
+
+        for i in range(args.octaves - 1):
+            o = downsample(t_transformed)
+            net = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
+            self.nets.append(net)
+
 
     def load(self, init_img, content_img, style_imgs):
         """Build model and load weights.  Content image is only used for computing size."""
