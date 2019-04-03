@@ -519,8 +519,8 @@ class Model:
         self.stem = stem
 
         net, reuse_vars = vgg19.build_network(t_transformed, args.model_weights)
-        self.net = net
-        nets.append(net)
+        self.net = net  ## TODO: remove this once we support multiple octaves.
+        self.nets.append(net)
 
         # Build image pyramid if more than one octave is specified.
         downsample = pyramid.gaussian
