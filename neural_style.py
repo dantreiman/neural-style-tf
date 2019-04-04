@@ -411,10 +411,10 @@ class Model:
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
         if args.learning_rate_decay == 'exponential':
             stem['learning_rate'] = tf.train.exponential_decay(args.learning_rate, stem['global_step'],
-                                                                    100, 0.96, staircase=True)
+                                                               500, 0.96, staircase=True)
         elif args.learning_rate_decay == 'cosine':
             stem['learning_rate'] = tf.train.cosine_decay_restarts(args.learning_rate, stem['global_step'],
-                                                                        100, 0.9, 0.1)
+                                                                   500, 0.96, 0.1)  # TODO: optimize these params
         else:
             stem['learning_rate'] = tf.constant(args.learning_rate)
 
