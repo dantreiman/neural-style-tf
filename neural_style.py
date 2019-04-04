@@ -1,14 +1,15 @@
 import tensorflow as tf
 import numpy as np
-import scipy.io
 import argparse
-import struct
 import errno
 import time
-import transform  # Borrowed from /data/notebooks/deepdream/transform.py
 import cv2
 import os
+
+import losses
+import optical_flow
 import pyramid
+import transform  # Borrowed from /data/notebooks/deepdream/transform.py
 import vgg19
 
 
@@ -251,41 +252,6 @@ def parse_args():
     return args
 
 
-'''
-  'a neural algorithm for artistic style' loss functions
-'''
-
-
-def content_layer_loss(p, x):
-    _, h, w, d = p.get_shape()
-    M = h.value * w.value
-    N = d.value
-    if args.content_loss_function == 1:
-        K = 1. / (2. * N ** 0.5 * M ** 0.5)
-    elif args.content_loss_function == 2:
-        K = 1. / (N * M)
-    elif args.content_loss_function == 3:
-        K = 1. / 2.
-    loss = K * tf.reduce_sum(tf.square(x - p))
-    return loss
-
-
-def style_layer_loss(a, x):
-    _, h, w, d = a.get_shape()
-    M = h.value * w.value
-    N = d.value
-    A = gram_matrix(a, M, N)
-    G = gram_matrix(x, M, N)
-    loss = (1. / (4 * N ** 2 * M ** 2)) * tf.reduce_sum(tf.pow((G - A), 2))
-    return loss
-
-
-def gram_matrix(x, area, depth):
-    F = tf.reshape(x, (area, depth))
-    G = tf.matmul(tf.transpose(F), F)
-    return G
-
-
 def mask_style_layer(a, x, mask_img):
     _, h, w, d = a.get_shape()
     mask = get_mask_image(mask_img, w.value, h.value)
@@ -299,42 +265,6 @@ def mask_style_layer(a, x, mask_img):
     a = tf.multiply(a, mask)
     x = tf.multiply(x, mask)
     return a, x
-
-
-def sum_masked_style_losses(sess, net, style_imgs):
-    total_style_loss = 0.
-    weights = args.style_imgs_weights
-    masks = args.style_mask_imgs
-    for img, img_weight, img_mask in zip(style_imgs, weights, masks):
-        sess.run(stem['input'].assign(img))
-        style_loss = 0.
-        for layer, weight in zip(args.style_layers, args.style_layer_weights):
-            a = sess.run(net[layer])
-            x = net[layer]
-            a = tf.convert_to_tensor(a)
-            a, x = mask_style_layer(a, x, img_mask)
-            style_loss += style_layer_loss(a, x) * weight
-        style_loss /= float(len(args.style_layers))
-        total_style_loss += (style_loss * img_weight)
-    total_style_loss /= float(len(style_imgs))
-    return total_style_loss
-
-
-def sum_style_losses(sess, net, style_imgs):
-    total_style_loss = 0.
-    weights = args.style_imgs_weights
-    for img, img_weight in zip(style_imgs, weights):
-        sess.run(stem['input'].assign(img))
-        style_loss = 0.
-        for layer, weight in zip(args.style_layers, args.style_layer_weights):
-            a = sess.run(net[layer])
-            x = net[layer]
-            a = tf.convert_to_tensor(a)
-            style_loss += style_layer_loss(a, x) * weight
-        style_loss /= float(len(args.style_layers))
-        total_style_loss += (style_loss * img_weight)
-    total_style_loss /= float(len(style_imgs))
-    return total_style_loss
 
 
 '''
@@ -419,36 +349,6 @@ def postprocess(img):
     return imgpost
 
 
-def read_flow_file(path):
-    with open(path, 'rb') as f:
-        # 4 bytes header
-        header = struct.unpack('4s', f.read(4))[0]
-        # 4 bytes width, height
-        w = struct.unpack('i', f.read(4))[0]
-        h = struct.unpack('i', f.read(4))[0]
-        flow = np.ndarray((2, h, w), dtype=np.float32)
-        for y in range(h):
-            for x in range(w):
-                flow[0, y, x] = struct.unpack('f', f.read(4))[0]
-                flow[1, y, x] = struct.unpack('f', f.read(4))[0]
-    return flow
-
-
-def read_weights_file(path):
-    lines = open(path).readlines()
-    header = list(map(int, lines[0].split(' ')))
-    w = header[0]
-    h = header[1]
-    vals = np.zeros((h, w), dtype=np.float32)
-    for i in range(1, len(lines)):
-        line = lines[i].rstrip().split(' ')
-        vals[i - 1] = np.array(list(map(np.float32, line)))
-        vals[i - 1] = list(map(lambda x: 0. if x < 255. else 1., vals[i - 1]))
-    # expand to 3 channels
-    weights = np.dstack([vals.astype(np.float32)] * 3)
-    return weights
-
-
 def normalize(weights):
     denom = sum(weights)
     if denom > 0.:
@@ -519,7 +419,6 @@ class Model:
         self.stem = stem
 
         net, reuse_vars = vgg19.build_network(t_transformed, args.model_weights)
-        self.net = net  ## TODO: remove this once we support multiple octaves.
         self.nets.append(net)
 
         # Build image pyramid if more than one octave is specified.
@@ -533,18 +432,17 @@ class Model:
             o = downsample(t_transformed)
             net = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
             self.nets.append(net)
-
+        return self.stem, self.nets
 
     def load(self, init_img, content_img, style_imgs):
         """Build model and load weights.  Content image is only used for computing size."""
         # setup network
-        net = self.build_network(content_img)
-
+        stem, nets = self.build_network(content_img)
         # style loss
         if args.style_mask:
-            L_style = sum_masked_style_losses(self.sess, net, style_imgs)
+            L_style = self.sum_masked_style_losses(style_imgs)
         else:
-            L_style = sum_style_losses(self.sess, net, style_imgs)
+            L_style = self.sum_style_losses(style_imgs)
 
         # content loss
         L_content = self.setup_content_loss(content_img)
@@ -581,6 +479,42 @@ class Model:
             self.train_op = self.tf_optimizer.minimize(self.loss, global_step=stem['global_step'])
         self.sess.run(tf.global_variables_initializer())
 
+    def sum_masked_style_losses(self, style_imgs):
+        sess = self.sess
+        style_losses = []
+        weights = args.style_imgs_weights
+        masks = args.style_mask_imgs
+        for img, img_weight, img_mask in zip(style_imgs, weights, masks):
+            sess.run(self.stem['input'].assign(img))
+            style_loss = 0.
+            for net in self.nets:
+                for layer, weight in zip(args.style_layers, args.style_layer_weights):
+                    a = sess.run(net[layer])
+                    x = net[layer]
+                    a = tf.convert_to_tensor(a)
+                    a, x = mask_style_layer(a, x, img_mask)
+                    style_loss += losses.style_layer_loss(a, x) * weight
+            style_loss /= float(len(args.style_layers))
+            style_losses.append(style_loss * img_weight)
+        return tf.reduce_mean(style_losses)
+
+    def sum_style_losses(self, style_imgs):
+        sess = self.sess
+        style_losses = []
+        weights = args.style_imgs_weights
+        for img, img_weight in zip(style_imgs, weights):
+            sess.run(self.stem['input'].assign(img))
+            style_loss = 0.
+            for net in self.nets:
+                for layer, weight in zip(args.style_layers, args.style_layer_weights):
+                    a = sess.run(net[layer])
+                    x = net[layer]
+                    a = tf.convert_to_tensor(a)
+                    style_loss += losses.style_layer_loss(a, x) * weight
+            style_loss /= float(len(args.style_layers))
+            style_losses.append(style_loss * img_weight)
+        return tf.reduce_mean(style_losses)
+
     def setup_shortterm_temporal_loss(self):
         c = get_content_weights(args.start_frame, args.start_frame + 1)
         # Initializes content weights to all zeros for first frame
@@ -598,20 +532,22 @@ class Model:
 
     def setup_content_loss(self, content_img):
         net = self.net
+        stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: content_img})
-        content_loss = 0.
+        content_losses = []
         content_layers = []
         content_vars = []
-        for layer_name, weight in zip(args.content_layers, args.content_layer_weights):
-            layer_t = net[layer_name]
-            activations = self.sess.run(layer_t)
-            content_t = tf.Variable(activations, trainable=False)
-            content_loss += content_layer_loss(content_t, layer_t) * weight
-            content_layers.append(layer_t)
-            content_vars.append(content_t)
+        for net in self.nets:
+            for layer_name, weight in zip(args.content_layers, args.content_layer_weights):
+                layer_t = net[layer_name]
+                activations = self.sess.run(layer_t)
+                content_t = tf.Variable(activations, trainable=False)
+                content_losses.append(losses.content_layer_loss(content_t, layer_t) * weight)
+                content_layers.append(layer_t)
+                content_vars.append(content_t)
         self.content_vars = content_vars
         self.update_content_ops = [v.assign(l) for v, l in zip(content_vars, content_layers)]
-        content_loss /= float(len(args.content_layers))
+        content_loss = tf.reduce_mean(content_losses)
         return content_loss
 
     def update_content_loss(self, content_img):
@@ -622,7 +558,7 @@ class Model:
         """Do gradient descent, save style image"""
         self.update_content_loss(content_img)
         # self.update_shortterm_temporal_loss(frame)
-        net = self.net
+        stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
         if args.optimizer in ('adam', 'adam_adaptive', 'mixed'):
             self.minimize_with_adam(self.loss)
@@ -669,7 +605,7 @@ class Model:
             #    print('%s: %.5f' % (k, self.sess.run(v)))
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = args.learning_rate
-                if 'learning_rate' in self.net:
+                if 'learning_rate' in self.stem:
                     lr = self.sess.run(self.stem['learning_rate'])
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr))
             if args.early_stopping and self.should_stop_early(loss_history):
@@ -684,7 +620,7 @@ class Model:
             self.sess.run(self.train_op)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = args.learning_rate
-                if 'learning_rate' in self.net:
+                if 'learning_rate' in self.stem:
                     lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
@@ -697,7 +633,7 @@ class Model:
             self.sess.run(self.train_op)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = args.learning_rate
-                if 'learning_rate' in self.net:
+                if 'learning_rate' in self.stem:
                     lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
@@ -710,7 +646,7 @@ class Model:
             self.sess.run(self.train_op)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = args.learning_rate
-                if 'learning_rate' in self.net:
+                if 'learning_rate' in self.stem:
                     lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
@@ -889,26 +825,19 @@ def get_flow_input_dir():
         return args.video_input_dir
 
 
-def resize_flow(flow, width, height):
-    """Resizes optical flow to target size"""
-    flow_img = np.transpose(flow, (1, 2, 0))
-    scaled = cv2.resize(flow_img, (width, height), interpolation=cv2.INTER_CUBIC)
-    return np.transpose(scaled, (2, 0, 1))
-
-
 def get_prev_warped_frame(frame):
     prev_img = get_prev_frame(frame)
     prev_frame = max(frame - 1, 0)
     # backwards flow: current frame -> previous frame
     fn = args.backward_optical_flow_frmt.format(str(frame), str(prev_frame))
     path = os.path.join(get_flow_input_dir(), fn)
-    flow = read_flow_file(path)
+    flow = optical_flow.read_flow_file(path)
     scale_f = args.superpixel_scale
     if scale_f > 1.0:
         print('Scaling optical flow up by %f' % scale_f)
-        flow = resize_flow(flow, prev_img.shape[1], prev_img.shape[0])
+        flow = optical_flow.resize_flow(flow, prev_img.shape[1], prev_img.shape[0])
         flow = flow * scale_f  # Multiplies displacement vectors by scale factor.
-    warped_img = warp_image(prev_img, flow).astype(np.float32)
+    warped_img = optical_flow.warp_image(prev_img, flow).astype(np.float32)
     img = preprocess(warped_img)
     return img
 
@@ -918,23 +847,9 @@ def get_content_weights(frame, prev_frame):
     backward_fn = args.content_weights_frmt.format(str(frame), str(prev_frame))
     forward_path = os.path.join(get_flow_input_dir(), forward_fn)
     backward_path = os.path.join(get_flow_input_dir(), backward_fn)
-    forward_weights = read_weights_file(forward_path)
-    backward_weights = read_weights_file(backward_path)
+    forward_weights = optical_flow.read_weights_file(forward_path)
+    # backward_weights = optical_flow.read_weights_file(backward_path)
     return forward_weights  # , backward_weights
-
-
-def warp_image(src, flow):
-    _, h, w = flow.shape
-    flow_map = np.zeros(flow.shape, dtype=np.float32)
-    for y in range(h):
-        flow_map[1, y, :] = float(y) + flow[1, y, :]
-    for x in range(w):
-        flow_map[0, :, x] = float(x) + flow[0, :, x]
-    # remap pixels to optical flow
-    dst = cv2.remap(
-        src, flow_map[0], flow_map[1],
-        interpolation=cv2.INTER_CUBIC, borderMode=cv2.BORDER_TRANSPARENT)
-    return dst
 
 
 def convert_to_original_colors(content_img, stylized_img):
