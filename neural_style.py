@@ -149,8 +149,13 @@ def parse_args():
     # optimizations
     parser.add_argument('--optimizer', type=str,
                         default='lbfgs',
-                        choices=['lbfgs', 'adam', 'adam_adaptive', 'mixed', 'gd', 'adagrad', 'nesterov'],
+                        choices=['lbfgs', 'adam', 'mixed', 'gd', 'adagrad', 'nesterov'],
                         help='Loss minimization optimizer.  L-BFGS gives better results.  Adam uses less memory. (default|recommended: %(default)s)')
+
+    parser.add_argument('--learning_rate_decay', type=str,
+                        default='constant',
+                        choices=['constant', 'exponential', 'cosine'],
+                        help='Learning rate decay method. (default|recommended: %(default)s)')
 
     parser.add_argument('--early_stopping', action='store_true',
                         help='Stop each frame early if loss change is below a target. Only works for ADAM.')
@@ -404,6 +409,14 @@ class Model:
                                          trainable=False)  # Previous input for temporal consistency
         stem['prev_input_assign'] = stem['prev_input'].assign(stem['prev_input_in'])
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
+        if args.learning_rate_decay = 'exponential':
+            self.stem['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.stem['global_step'],
+                                                                    100, 0.96, staircase=True)
+        elif args.learning_rate_decay = 'cosine':
+            self.stem['learning_rate'] = tf.train.cosine_decay_restarts(args.learning_rate, self.stem['global_step'],
+                                                                        100, 0.9, 0.1)
+        else:
+            self.stem['learning_rate'] = tf.constant(args.learning_rate)
 
         transforms = []
         if args.transforms == 'standard':
@@ -475,7 +488,7 @@ class Model:
         # optimization algorithm
         self.loss = L_total
         self.setup_optimizer(self.loss)
-        if args.optimizer in ('adam', 'adam_adaptive', 'mixed', 'gd', 'adagrad', 'nesterov'):
+        if args.optimizer in ('adam', 'mixed', 'gd', 'adagrad', 'nesterov'):
             self.train_op = self.tf_optimizer.minimize(self.loss, global_step=stem['global_step'])
         self.sess.run(tf.global_variables_initializer())
 
@@ -559,7 +572,7 @@ class Model:
         # self.update_shortterm_temporal_loss(frame)
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
-        if args.optimizer in ('adam', 'adam_adaptive', 'mixed'):
+        if args.optimizer in ('adam', 'mixed'):
             self.minimize_with_adam(self.loss)
         if args.optimizer in ('lbfgs', 'mixed'):
             self.minimize_with_lbfgs()
@@ -603,9 +616,7 @@ class Model:
             #  for k,v in self.debug_losses.items():
             #    print('%s: %.5f' % (k, self.sess.run(v)))
             if iterations % args.print_iterations == 0 and args.verbose:
-                lr = args.learning_rate
-                if 'learning_rate' in self.stem:
-                    lr = self.sess.run(self.stem['learning_rate'])
+                lr = self.sess.run(self.stem['learning_rate'])
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr))
             if args.early_stopping and self.should_stop_early(loss_history):
                 print('Stopping early')
@@ -618,9 +629,7 @@ class Model:
         while (iterations < self.max_tf_iterations):
             self.sess.run(self.train_op)
             if iterations % args.print_iterations == 0 and args.verbose:
-                lr = args.learning_rate
-                if 'learning_rate' in self.stem:
-                    lr = self.sess.run(self.stem['learning_rate'])
+                lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
             iterations += 1
@@ -631,9 +640,7 @@ class Model:
         while (iterations < self.max_tf_iterations):
             self.sess.run(self.train_op)
             if iterations % args.print_iterations == 0 and args.verbose:
-                lr = args.learning_rate
-                if 'learning_rate' in self.stem:
-                    lr = self.sess.run(self.stem['learning_rate'])
+                lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
             iterations += 1
@@ -644,34 +651,27 @@ class Model:
         while (iterations < self.max_tf_iterations):
             self.sess.run(self.train_op)
             if iterations % args.print_iterations == 0 and args.verbose:
-                lr = args.learning_rate
-                if 'learning_rate' in self.stem:
-                    lr = self.sess.run(self.stem['learning_rate'])
+                lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
             iterations += 1
 
     def setup_optimizer(self, loss):
         print_iterations = args.print_iterations if args.verbose else 0
+        learning_rate = self.stem['learning_rate']
         if args.optimizer in ('lbfgs', 'mixed'):
             self.sc_optimizer = tf.contrib.opt.ScipyOptimizerInterface(
                 loss, method='L-BFGS-B',
                 options={'maxiter': self.max_bfgs_iterations,
                          'disp': print_iterations})
         if args.optimizer in ('adam', 'mixed'):
-            self.tf_optimizer = tf.train.AdamOptimizer(args.learning_rate)
+            self.tf_optimizer = tf.train.AdamOptimizer(learning_rate)
         if args.optimizer == 'gd':
-            self.stem['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.stem['global_step'],
-                                                                    100, 0.96, staircase=True)
-            self.tf_optimizer = tf.train.GradientDescentOptimizer(self.stem['learning_rate'])
-        if args.optimizer == 'adam_adaptive':
-            self.stem['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.stem['global_step'],
-                                                                   100, 0.96, staircase=True)
-            self.tf_optimizer = tf.train.AdamOptimizer(self.stem['learning_rate'])
+            self.tf_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
         if args.optimizer == 'adagrad':
-            self.tf_optimizer = tf.train.AdagradOptimizer(args.learning_rate)
+            self.tf_optimizer = tf.train.AdagradOptimizer(learning_rate)
         if args.optimizer == 'nesterov':
-            self.tf_optimizer = tf.train.MomentumOptimizer(args.learning_rate, 0.9, use_nesterov=True)
+            self.tf_optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
 
 
 def write_video_output(frame, output_img):
