@@ -531,7 +531,6 @@ class Model:
         self.sess.run(self.content_weights.assign(c))
 
     def setup_content_loss(self, content_img):
-        net = self.net
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: content_img})
         content_losses = []
