@@ -430,7 +430,7 @@ class Model:
 
         for i in range(args.octaves - 1):
             o = downsample(t_transformed)
-            net = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
+            net, _ = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
             self.nets.append(net)
         return self.stem, self.nets
 
