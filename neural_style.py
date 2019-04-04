@@ -409,10 +409,10 @@ class Model:
                                          trainable=False)  # Previous input for temporal consistency
         stem['prev_input_assign'] = stem['prev_input'].assign(stem['prev_input_in'])
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
-        if args.learning_rate_decay = 'exponential':
+        if args.learning_rate_decay == 'exponential':
             self.stem['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.stem['global_step'],
                                                                     100, 0.96, staircase=True)
-        elif args.learning_rate_decay = 'cosine':
+        elif args.learning_rate_decay == 'cosine':
             self.stem['learning_rate'] = tf.train.cosine_decay_restarts(args.learning_rate, self.stem['global_step'],
                                                                         100, 0.9, 0.1)
         else:
