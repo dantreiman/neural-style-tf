@@ -35,5 +35,5 @@ def laplacian(x, n_c=3):
 
 
 def bilinear(x, n_c=3, factor=0.75):
-    new_size = tf.to_int32(tf.shape(x)[1:3] * factor)
+    new_size = tf.to_int32(tf.cast(tf.shape(x)[1:3], tf.float32) * factor)
     return tf.image.resize_bilinear(x, new_size)
