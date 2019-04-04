@@ -410,13 +410,13 @@ class Model:
         stem['prev_input_assign'] = stem['prev_input'].assign(stem['prev_input_in'])
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
         if args.learning_rate_decay == 'exponential':
-            self.stem['learning_rate'] = tf.train.exponential_decay(args.learning_rate, self.stem['global_step'],
+            stem['learning_rate'] = tf.train.exponential_decay(args.learning_rate, stem['global_step'],
                                                                     100, 0.96, staircase=True)
         elif args.learning_rate_decay == 'cosine':
-            self.stem['learning_rate'] = tf.train.cosine_decay_restarts(args.learning_rate, self.stem['global_step'],
+            stem['learning_rate'] = tf.train.cosine_decay_restarts(args.learning_rate, stem['global_step'],
                                                                         100, 0.9, 0.1)
         else:
-            self.stem['learning_rate'] = tf.constant(args.learning_rate)
+            stem['learning_rate'] = tf.constant(args.learning_rate)
 
         transforms = []
         if args.transforms == 'standard':
