@@ -25,9 +25,12 @@ def parse_args():
                         default='result',
                         help='Filename of the output image.')
 
+    # One of --style_input_dir, --style_imgs must be specified.
+    parser.add_argument('--style_input_dir', type=str,
+                        help='Relative or absolute directory path to style image frames.')
+
     parser.add_argument('--style_imgs', nargs='+', type=str,
-                        help='Filenames of the style images (example: starry-night.jpg)',
-                        required=True)
+                        help='Filenames of the style images (example: starry-night.jpg)')
 
     parser.add_argument('--style_imgs_weights', nargs='+', type=float,
                         default=[1.0],
@@ -893,10 +896,11 @@ def render_single_image():
 def render_video():
     model = Model()
     needs_load = True
+    # If a frame file exists with the number before our start frame, assume we are resuming a killed job
+    prior_frame_path = os.path.join(args.video_input_dir,
+                                    args.content_frame_frmt.format(str(args.start_frame - 1).zfill(5)))
+    assume_resume = os.path.isfile(prior_frame_path)
     for frame in range(args.start_frame, args.end_frame + 1):
-        # If start_frame > 1, assume we are resuming a previously killed job.
-        # TODO(dtreiman): check for existance of previous frame instead.
-        assume_resume = args.start_frame > 1
         print('\n---- RENDERING VIDEO FRAME: {}/{} ----\n'.format(frame, args.end_frame))
         if not assume_resume and frame == args.start_frame:
             content_frame = get_content_frame(frame)
