@@ -381,6 +381,7 @@ class Model:
             self.sess = tf.Session()
             self.stem = {}  # The common portion of the neural network, before image pyramid
             self.nets = []  # The networks for each layer of the pyramid, from largest to smallest
+            self.style_nets = [] # The style image networks for each layer of the pyramid.
             self.update_content_ops = []
             self.content_weights = None
             self.loss = None
@@ -411,6 +412,10 @@ class Model:
         stem['prev_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32),
                                          trainable=False)  # Previous input for temporal consistency
         stem['prev_input_assign'] = stem['prev_input'].assign(stem['prev_input_in'])
+        stem['style_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into style
+        stem['style_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=False)
+        stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
+
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
         if args.learning_rate_decay == 'exponential':
             stem['learning_rate'] = tf.train.exponential_decay(args.learning_rate, stem['global_step'],
@@ -435,7 +440,9 @@ class Model:
         self.stem = stem
 
         net, reuse_vars = vgg19.build_network(t_transformed, args.model_weights)
+        style_net, _ = vgg19.build_network(stem['style_input'], args.model_weights, reuse_vars=reuse_vars)
         self.nets.append(net)
+        self.style_nets.append(style_net)
 
         # Build image pyramid if more than one octave is specified.
         downsample = pyramid.gaussian
@@ -444,16 +451,21 @@ class Model:
         elif args.downsample_method == 'resize':
             downsample = pyramid.bilinear
 
+        o = t_transformed
+        s = stem['style_input']
         for i in range(args.octaves - 1):
-            o = downsample(t_transformed)
+            o = downsample(o)
+            s = downsample(s)
             net, _ = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
+            style_net, _ = vgg19.build_network(s, args.model_weights, reuse_vars=reuse_vars)
             self.nets.append(net)
-        return self.stem, self.nets
+            self.style_nets.append(style_net)
+        return self.stem, self.nets, self.style_nets
 
     def load(self, init_img, content_img, style_imgs):
         """Build model and load weights.  Content image is only used for computing size."""
         # setup network
-        stem, nets = self.build_network(content_img)
+        stem, nets, style_nets = self.build_network(content_img)
         # style loss
         if args.style_mask:
             L_style = self.sum_masked_style_losses(style_imgs)
@@ -501,13 +513,12 @@ class Model:
         weights = args.style_imgs_weights
         masks = args.style_mask_imgs
         for img, img_weight, img_mask in zip(style_imgs, weights, masks):
-            sess.run(self.stem['input'].assign(img))
+            sess.run(self.stem['style_input_assign'], feed_dict={self.stem['style_input_in']: img})
             style_loss = 0.
-            for net in self.nets:
+            for net, style_net in zip(self.nets, self.style_nets):
                 for layer, weight in zip(args.style_layers, args.style_layer_weights):
-                    a = sess.run(net[layer])
+                    a = style_net[layer]
                     x = net[layer]
-                    a = tf.convert_to_tensor(a)
                     a, x = mask_style_layer(a, x, img_mask)
                     style_loss += losses.style_layer_loss(a, x) * weight
             style_loss /= float(len(args.style_layers))
@@ -519,13 +530,12 @@ class Model:
         style_losses = []
         weights = args.style_imgs_weights
         for img, img_weight in zip(style_imgs, weights):
-            sess.run(self.stem['input'].assign(img))
+            sess.run(self.stem['style_input_assign'], feed_dict={self.stem['style_input_in']: img})
             style_loss = 0.
-            for net in self.nets:
+            for net, style_net in zip(self.nets, self.style_nets):
                 for layer, weight in zip(args.style_layers, args.style_layer_weights):
-                    a = sess.run(net[layer])
+                    a = style_net[layer]
                     x = net[layer]
-                    a = tf.convert_to_tensor(a)
                     style_loss += losses.style_layer_loss(a, x) * weight
             style_loss /= float(len(args.style_layers))
             style_losses.append(style_loss * img_weight)
