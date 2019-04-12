@@ -579,7 +579,8 @@ class Model:
         self.sess.run(self.update_content_ops)
 
     def update_style_loss(self, style_images):
-        self.sess.run(self.stem['style_input_assign'], feed_dict={self.stem['style_input_in']: style_images})
+        style_images_stacked = np.concatenate(style_images, axis=0)
+        self.sess.run(self.stem['style_input_assign'], feed_dict={self.stem['style_input_in']: style_images_stacked})
 
     def stylize(self, content_img, style_imgs, init_img, frame=None):
         """Do gradient descent, save style image"""
