@@ -25,12 +25,10 @@ def parse_args():
                         default='result',
                         help='Filename of the output image.')
 
-    # One of --style_input_dir, --style_imgs must be specified.
-    parser.add_argument('--style_input_dir', type=str,
-                        help='Relative or absolute directory path to style image frames.')
-
+    # Each entry of style_imgs may be an image or video.
+    # Filenames with a file extension are assumed to be images, directories are assumed to be videos.
     parser.add_argument('--style_imgs', nargs='+', type=str,
-                        help='Filenames of the style images (example: starry-night.jpg)')
+                        help='Filenames of the style images (example: starry-night.jpg), or directories for video style.')
 
     parser.add_argument('--style_imgs_weights', nargs='+', type=float,
                         default=[1.0],
@@ -791,11 +789,21 @@ def get_content_image(content_img_path):
     return img
 
 
-def get_style_images(content_img):
+def is_image_file(path):
+    # Assuming any file with an extension is an image.
+    extension = os.path.splitext(path)[1]
+    return len(extension) > 0
+
+
+def get_style_images_for_frame(content_img, frame):
     _, ch, cw, cd = content_img.shape
     style_imgs = []
     for style_fn in args.style_imgs:
-        path = os.path.join(args.style_imgs_dir, style_fn)
+        if is_image_file(style_fn):
+            path = os.path.join(args.style_imgs_dir, style_fn)
+        else:
+            # Assume style video input uses same format.
+            path = os.path.join(args.style_imgs_dir, style_fn, args.content_frame_frmt.format(str(frame).zfill(5)))
         # bgr image
         img = cv2.imread(path, cv2.IMREAD_COLOR)
         check_image(img, path)
@@ -897,7 +905,7 @@ def render_single_image():
     model = Model()
     content_image_path = os.path.join(args.content_img_dir, args.content_img)
     content_img = get_content_image(content_image_path)
-    style_imgs = get_style_images(content_img)
+    style_imgs = get_style_images_for_frame(content_img, 0)
     print('\n---- RENDERING SINGLE IMAGE ----\n')
     init_img = get_init_image(args.init_img_type, content_img, style_imgs)
     tick = time.time()
@@ -918,7 +926,7 @@ def render_video():
         print('\n---- RENDERING VIDEO FRAME: {}/{} ----\n'.format(frame, args.end_frame))
         if not assume_resume and frame == args.start_frame:
             content_frame = get_content_frame(frame)
-            style_imgs = get_style_images(content_frame)
+            style_imgs = get_style_images_for_frame(content_frame, frame)
             init_img = get_init_image(args.first_frame_type, content_frame, style_imgs, frame)
             model.set_max_iterations(args.first_frame_iterations)
             tick = time.time()
@@ -930,7 +938,7 @@ def render_video():
             print('Frame {} elapsed time: {}'.format(frame, tock - tick))
         else:
             content_frame = get_content_frame(frame)
-            style_imgs = get_style_images(content_frame)
+            style_imgs = get_style_images_for_frame(content_frame, frame)
             init_img = get_init_image(args.init_frame_type, content_frame, style_imgs, frame)
             model.set_max_iterations(args.frame_iterations)
             tick = time.time()
