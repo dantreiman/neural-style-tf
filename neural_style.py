@@ -101,6 +101,10 @@ def parse_args():
     parser.add_argument('--octaves', type=int, default=1,
                         help='Each octave represents an additonal level of detail in an image pyramid.')
 
+    parser.add_argument('--octave_weights', nargs='+', type=float,
+                        default=[1.0],
+                        help='Contributions (weights) of each octave to loss. (default: %(default)s)')
+
     parser.add_argument('--original_colors', action='store_true',
                         help='Transfer the style but not the colors.')
 
@@ -271,6 +275,13 @@ def mask_style_layer(a, x, mask_img):
     a = tf.multiply(a, mask)
     x = tf.multiply(x, mask)
     return a, x
+
+
+def weight_for_octave(o):
+    if o < len(args.octave_weights):
+        return args.octave_weights[o]
+    else:
+        return args.octave_weights[-1]
 
 
 '''
@@ -507,33 +518,33 @@ class Model:
 
 
     def sum_masked_style_losses(self):
-        sess = self.sess
         style_losses = []
         weights = args.style_imgs_weights
         masks = args.style_mask_imgs
         for i, (img_weight, img_mask) in enumerate(zip(weights, masks)):
             style_loss = 0.
-            for net, style_net in zip(self.nets, self.style_nets):
+            for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
+                octave_weight = weight_for_octave(o)
                 for layer, weight in zip(args.style_layers, args.style_layer_weights):
                     a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
                     x = net[layer]
                     a, x = mask_style_layer(a, x, img_mask)
-                    style_loss += losses.style_layer_loss(a, x) * weight
+                    style_loss += losses.style_layer_loss(a, x) * octave_weight * weight
             style_loss /= float(len(args.style_layers))
             style_losses.append(style_loss * img_weight)
         return tf.reduce_mean(style_losses)
 
     def sum_style_losses(self):
-        sess = self.sess
         style_losses = []
         weights = args.style_imgs_weights
         for i, img_weight in enumerate(weights):
             style_loss = 0.
-            for net, style_net in zip(self.nets, self.style_nets):
+            for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
+                octave_weight = weight_for_octave(o)
                 for layer, weight in zip(args.style_layers, args.style_layer_weights):
                     a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
                     x = net[layer]
-                    style_loss += losses.style_layer_loss(a, x) * weight
+                    style_loss += losses.style_layer_loss(a, x) * octave_weight * weight
             style_loss /= float(len(args.style_layers))
             style_losses.append(style_loss * img_weight)
         return tf.reduce_mean(style_losses)
