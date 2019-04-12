@@ -389,7 +389,7 @@ class Model:
             self.tf_optimizer = None
             self.sc_optimizer = None
             self.train_op = None
-            self.max_tf_iterations = None  # Max iterations of whichever TF optimizer wer're using.
+            self.max_tf_iterations = None  # Max iterations of whichever TF optimizer we're using.
             self.max_bfgs_iterations = None  # Max iterations of L-BFGS.
             self.set_max_iterations(args.max_iterations)
 
@@ -401,7 +401,7 @@ class Model:
             self.max_tf_iterations = max_iterations
             self.max_bfgs_iterations = max_iterations
 
-    def build_network(self, input_img):
+    def build_network(self, input_img, n_styles=1):
         _, h, w, d = input_img.shape
         stem = {}
         stem['input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into input
@@ -413,7 +413,7 @@ class Model:
                                          trainable=False)  # Previous input for temporal consistency
         stem['prev_input_assign'] = stem['prev_input'].assign(stem['prev_input_in'])
         stem['style_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into style
-        stem['style_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=False)
+        stem['style_input'] = tf.Variable(np.zeros((n_styles, h, w, d), dtype=np.float32), trainable=False)
         stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
 
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
@@ -465,12 +465,12 @@ class Model:
     def load(self, init_img, content_img, style_imgs):
         """Build model and load weights.  Content image is only used for computing size."""
         # setup network
-        stem, nets, style_nets = self.build_network(content_img)
+        stem, nets, style_nets = self.build_network(content_img, n_styles=len(style_images))
         # style loss
         if args.style_mask:
-            L_style = self.sum_masked_style_losses(style_imgs)
+            L_style = self.sum_masked_style_losses()
         else:
-            L_style = self.sum_style_losses(style_imgs)
+            L_style = self.sum_style_losses()
 
         # content loss
         L_content = self.setup_content_loss(content_img)
@@ -507,17 +507,17 @@ class Model:
             self.train_op = self.tf_optimizer.minimize(self.loss, global_step=stem['global_step'])
         self.sess.run(tf.global_variables_initializer())
 
-    def sum_masked_style_losses(self, style_imgs):
+
+    def sum_masked_style_losses(self):
         sess = self.sess
         style_losses = []
         weights = args.style_imgs_weights
         masks = args.style_mask_imgs
-        for img, img_weight, img_mask in zip(style_imgs, weights, masks):
-            sess.run(self.stem['style_input_assign'], feed_dict={self.stem['style_input_in']: img})
+        for i, (img_weight, img_mask) in enumerate(zip(weights, masks)):
             style_loss = 0.
             for net, style_net in zip(self.nets, self.style_nets):
                 for layer, weight in zip(args.style_layers, args.style_layer_weights):
-                    a = style_net[layer]
+                    a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
                     x = net[layer]
                     a, x = mask_style_layer(a, x, img_mask)
                     style_loss += losses.style_layer_loss(a, x) * weight
@@ -525,16 +525,15 @@ class Model:
             style_losses.append(style_loss * img_weight)
         return tf.reduce_mean(style_losses)
 
-    def sum_style_losses(self, style_imgs):
+    def sum_style_losses(self):
         sess = self.sess
         style_losses = []
         weights = args.style_imgs_weights
-        for img, img_weight in zip(style_imgs, weights):
-            sess.run(self.stem['style_input_assign'], feed_dict={self.stem['style_input_in']: img})
+        for i, img_weight in enumerate(weights):
             style_loss = 0.
             for net, style_net in zip(self.nets, self.style_nets):
                 for layer, weight in zip(args.style_layers, args.style_layer_weights):
-                    a = style_net[layer]
+                    a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
                     x = net[layer]
                     style_loss += losses.style_layer_loss(a, x) * weight
             style_loss /= float(len(args.style_layers))
@@ -579,9 +578,13 @@ class Model:
         self.sess.run(self.stem['input_assign'], feed_dict={self.stem['input_in']: content_img})
         self.sess.run(self.update_content_ops)
 
+    def update_style_loss(self, style_images):
+        self.sess.run(self.stem['style_input_assign'], feed_dict={self.stem['style_input_in']: style_images})
+
     def stylize(self, content_img, style_imgs, init_img, frame=None):
         """Do gradient descent, save style image"""
         self.update_content_loss(content_img)
+        self.update_style_loss(style_imgs)
         # self.update_shortterm_temporal_loss(frame)
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
