@@ -843,6 +843,7 @@ def is_image_file(path):
 
 
 def get_style_images_for_frame(content_img, frame):
+    style_frame = frame * 2
     _, ch, cw, cd = content_img.shape
     style_imgs = []
     for style_fn in args.style_imgs:
@@ -850,7 +851,7 @@ def get_style_images_for_frame(content_img, frame):
             path = os.path.join(args.style_imgs_dir, style_fn)
         else:
             # Assume style video input uses same format.
-            path = os.path.join(args.style_imgs_dir, style_fn, args.content_frame_frmt.format(str(frame).zfill(5)))
+            path = os.path.join(args.style_imgs_dir, style_fn, args.content_frame_frmt.format(str(style_frame).zfill(5)))
         # bgr image
         img = cv2.imread(path, cv2.IMREAD_COLOR)
         check_image(img, path)
