@@ -567,8 +567,8 @@ class Model:
                     x = net[layer]
                     n, h, w, c = a.get_shape()
                     octave_weight = weight_for_octave(o)
-                    a_o.append(a.reshape([n, 1, h*w, c]) * octave_weight)
-                    x_o.append(x.reshape[n, 1, h*w, c] * octave_weight)
+                    a_o.append(tf.reshape(a, [n, 1, h*w, c]) * octave_weight)
+                    x_o.append(tf.reshape(x, [n, 1, h*w, c]) * octave_weight)
                 style_loss += losses.style_layer_loss(tf.concat(a_o, 2), tf.concat(x_o, 2)) * weight
             style_loss /= float(len(args.style_layers))
             style_losses.append(style_loss * img_weight)
