@@ -105,6 +105,9 @@ def parse_args():
                         default=[1.0],
                         help='Contributions (weights) of each octave to loss. (default: %(default)s)')
 
+    parser.add_argument('--correlate_octaves', action='store_true',
+                        help='Compute correlations between multiple size scales.')
+
     parser.add_argument('--original_colors', action='store_true',
                         help='Transfer the style but not the colors.')
 
@@ -478,6 +481,8 @@ class Model:
         # style loss
         if args.style_mask:
             L_style = self.sum_masked_style_losses()
+        elif args.correlate_octaves:
+            L_style = self.sum_style_losses_correlate_octaves()
         else:
             L_style = self.sum_style_losses()
 
@@ -545,6 +550,26 @@ class Model:
                     a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
                     x = net[layer]
                     style_loss += losses.style_layer_loss(a, x) * octave_weight * weight
+            style_loss /= float(len(args.style_layers))
+            style_losses.append(style_loss * img_weight)
+        return tf.reduce_mean(style_losses)
+
+    def sum_style_losses_correlate_octaves(self):
+        style_losses = []
+        weights = args.style_imgs_weights
+        for i, img_weight in enumerate(weights):
+            style_loss = 0.
+            for layer, weight in zip(args.style_layers, args.style_layer_weights):
+                a_o = []
+                x_o = []
+                for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
+                    a = style_net[layer][i:i + 1]  # The activations of layer for the ith style image
+                    x = net[layer]
+                    n, h, w, c = a.get_shape()
+                    octave_weight = weight_for_octave(o)
+                    a_o.append(a.reshape([n, 1, h*w, c]) * octave_weight)
+                    x_o.append(x.reshape[n, 1, h*w, c] * octave_weight)
+                style_loss += losses.style_layer_loss(tf.concat(a_o, 2), tf.concat(x_o, 2)) * weight
             style_loss /= float(len(args.style_layers))
             style_losses.append(style_loss * img_weight)
         return tf.reduce_mean(style_losses)
