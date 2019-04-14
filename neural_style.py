@@ -899,17 +899,16 @@ def get_prev_warped_frame(frame, content_img):
         flow = flow * scale_f  # Multiplies displacement vectors by scale factor.
     # Filter flow by thresholding on content image value.
     # Approximate luminance
-    luma =  0.3 * (content_img[:,:,0]) + (0.59 * content_img[:,:,1]) + (0.11 * content_img[:,:,2])
-
+    warped_content_img = optical_flow.warp_image(content_img, flow).astype(np.float32)
+    def approx_luminance(img):
+        return 0.3 * (img[:,:,0]) + (0.59 * img[:,:,1]) + (0.11 * img[:,:,2])
+    content_luma =  approx_luminance(content_img)
+    warped_content_luma = approx_luminance(warped_content_img)
     threshold = 0.95
-    _, h, w = flow.shape
-    flow_map = np.zeros(flow.shape, dtype=np.float32)
-    for y in range(h):
-        flow_map[1, y, :] = float(y) + flow[1, y, :]
-    for x in range(w):
-        flow_map[0, :, x] = float(x) + flow[0, :, x]
-    src_match = luma < threshold
-    dest_match = luma[np.transpose(flow_map.astype(np.int32), [1,2,0])] < threshold
+    src_match = content_luma < threshold
+    dest_match = warped_content_luma < threshold
+    print('src_match_mean: ' + str(np.mean(src_match)))
+    print('dst_match_mean: ' + str(np.mean(dest_match)))
     flow_mask = np.expand_dims(src_match | dest_match, 0)
     warped_img = optical_flow.warp_image(prev_img, flow * flow_mask).astype(np.float32)
     img = preprocess(warped_img)
