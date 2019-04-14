@@ -83,6 +83,10 @@ def parse_args():
                         default=['conv4_2'],
                         help='VGG19 layers used for the content image. (default: %(default)s)')
 
+    parser.add_argument('--temporal_layers', nargs='+', type=str,
+                        default=['conv4_2'],
+                        help='VGG19 layers used for the perceptual loss on the previous frame. (default: %(default)s)')
+
     parser.add_argument('--style_layers', nargs='+', type=str,
                         default=['relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1'],
                         help='VGG19 layers used for the style image. (default: %(default)s)')
@@ -243,10 +247,6 @@ def parse_args():
                         default='reliable_{}_{}.txt',
                         help='Filename format of the optical flow consistency files.')
 
-    parser.add_argument('--prev_frame_indices', nargs='+', type=int,
-                        default=[1],
-                        help='Previous frames to consider for longterm temporal consistency.')
-
     parser.add_argument('--first_frame_iterations', type=int,
                         default=2000,  # 2000
                         help='Maximum number of optimizer iterations of the first frame. (default: %(default)s)')
@@ -308,27 +308,6 @@ def temporal_loss(x, w, c):
     """
     c = tf.expand_dims(c, 0)
     loss = tf.reduce_mean(c * tf.nn.l2_loss(x - w))
-    return loss
-
-
-def get_longterm_weights(i, j):
-    c_sum = 0.
-    for k in range(args.prev_frame_indices):
-        if i - k > i - j:
-            c_sum += get_content_weights(i, i - k)
-    c = get_content_weights(i, i - j)
-    c_max = tf.maximum(c - c_sum, 0.)
-    return c_max
-
-
-def sum_longterm_temporal_losses(sess, net, frame, input_img):
-    x = sess.run(stem['input'].assign(input_img))
-    loss = 0.
-    for j in range(args.prev_frame_indices):
-        prev_frame = frame - j
-        w = get_prev_warped_frame(frame)
-        c = get_longterm_weights(frame, prev_frame)
-        loss += temporal_loss(x, w, c)
     return loss
 
 
@@ -422,20 +401,27 @@ class Model:
         _, h, w, d = input_img.shape
         stem = {}
         stem['input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into input
-        stem['input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=True)
+        stem['input'] = tf.Variable(np.zeros((1, h, w, d), dtype=tf.float32), trainable=True)
         stem['input_assign'] = stem['input'].assign(stem['input_in'])
 
-        stem['content_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed 'content image' in.
-        stem['content_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=False)
+        stem['content_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed content image in.
+        stem['content_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=tf.float32), trainable=False)
         stem['content_input_assign'] = stem['content_input'].assign(stem['content_input_in'])
 
         stem['prev_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed previous image into temporal loss function.
-        stem['prev_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32),  trainable=False)  # Previous input for temporal consistency
+        stem['prev_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=tf.float32),  trainable=False)  # Previous input for temporal consistency
         stem['prev_input_assign'] = stem['prev_input'].assign(stem['prev_input_in'])
 
         stem['style_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed style image (or images)
-        stem['style_input'] = tf.Variable(np.zeros((n_styles, h, w, d), dtype=np.float32), trainable=False)
+        stem['style_input'] = tf.Variable(np.zeros((n_styles, h, w, d), dtype=tf.float32), trainable=False)
         stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
+
+        c = get_content_weights(args.start_frame, args.start_frame + 1)
+        stem['content_weights_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))
+        stem['content_weights'] = tf.Variable(np.zeros_like(c), dtype=tf.float32, trainable=False)
+        stem['content_weights_assign'] = stem['content_weights'].assign(stem['content_weights_in'])
+        self.content_weights
+
 
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
         stem['reset_global_step'] = stem['global_step'].assign(0)
@@ -479,11 +465,17 @@ class Model:
 
         o = t_transformed
         s = stem['style_input']
+        c = stem['content_input']
+        p = stem['prev_input']
         for i in range(args.octaves - 1):
             o = downsample(o)
             s = downsample(s)
+            c = downsample(c)
+            p = downsample(p)
             net, _ = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
             style_net, _ = vgg19.build_network(s, args.model_weights, reuse_vars=reuse_vars)
+            content_net, _ = vgg19.build_network(c, args.model_weights, reuse_vars=reuse_vars)
+            temporal_net, _ = vgg19.build_network(p, args.model_weights, reuse_vars=reuse_vars)
             self.nets.append(net)
             self.style_nets.append(style_net)
             self.content_nets.append(content_net)
@@ -592,16 +584,10 @@ class Model:
         return tf.reduce_mean(style_losses)
 
     def setup_shortterm_temporal_loss(self):
-        c = get_content_weights(args.start_frame, args.start_frame + 1)
-        # Initializes content weights to all zeros for first frame
-        self.content_weights = tf.Variable(np.zeros_like(c), trainable=False)
-        return temporal_loss(self.stem['input'], self.stem['prev_input'], self.content_weights)
 
-    def setup_shortterm_temporal_loss(self):
-        c = get_content_weights(args.start_frame, args.start_frame + 1)
-        # Initializes content weights to all zeros for first frame
-        self.content_weights = tf.Variable(np.zeros_like(c), trainable=False)
-        return temporal_loss(self.stem['input'], self.stem['prev_input'], self.content_weights)
+
+
+        return temporal_loss(self.stem['input'], self.stem['prev_input'])
 
     def update_shortterm_temporal_loss(self, frame):
         if frame is None or frame == 0 or (frame == 1 and args.start_frame == 1):
