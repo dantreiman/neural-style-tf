@@ -299,7 +299,7 @@ def weight_for_octave(o):
 
 
 def temporal_loss(x, w, c):
-    """Compute temporal consistency loss.
+    """Compute temporal consistency loss.  (mean L2 loss, weighted by content weights)
 
     Args:
       x (tf.Tensor) The image.
@@ -307,10 +307,7 @@ def temporal_loss(x, w, c):
       c (tf.Tensor) The content weights.
     """
     c = tf.expand_dims(c, 0)
-    D = float(np.prod(x.get_shape().as_list()))
-    print('temporal loss: D = %f' % D)
-    loss = (1. / D) * tf.reduce_sum(c * tf.nn.l2_loss(x - w))
-    loss = tf.cast(loss, tf.float32)
+    loss = tf.reduce_mean(c * tf.nn.l2_loss(x - w))
     return loss
 
 
@@ -399,8 +396,9 @@ class Model:
             self.sess = tf.Session()
             self.stem = {}  # The common portion of the neural network, before image pyramid
             self.nets = []  # The networks for each layer of the pyramid, from largest to smallest
-            self.style_nets = [] # The style image networks for each layer of the pyramid.
-            self.update_content_ops = []
+            self.style_nets = []  # The style image networks for each layer of the pyramid.
+            self.content_nets = []  # Networks for computing perceptual content loss.
+            self.temporal_nets = []  # Networks for computing perceptual temporal consistency.
             self.content_weights = None
             self.loss = None
             self.debug_losses = {}
@@ -426,12 +424,16 @@ class Model:
         stem['input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into input
         stem['input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=True)
         stem['input_assign'] = stem['input'].assign(stem['input_in'])
-        stem['prev_input_in'] = tf.placeholder(tf.float32, shape=(
-            1, h, w, d))  # Used to feed previous image into temporal loss function.
-        stem['prev_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32),
-                                         trainable=False)  # Previous input for temporal consistency
+
+        stem['content_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed 'content image' in.
+        stem['content_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=False)
+        stem['content_input_assign'] = stem['content_input'].assign(stem['content_input_in'])
+
+        stem['prev_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed previous image into temporal loss function.
+        stem['prev_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32),  trainable=False)  # Previous input for temporal consistency
         stem['prev_input_assign'] = stem['prev_input'].assign(stem['prev_input_in'])
-        stem['style_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into style
+
+        stem['style_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed style image (or images)
         stem['style_input'] = tf.Variable(np.zeros((n_styles, h, w, d), dtype=np.float32), trainable=False)
         stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
 
@@ -461,8 +463,12 @@ class Model:
 
         net, reuse_vars = vgg19.build_network(t_transformed, args.model_weights)
         style_net, _ = vgg19.build_network(stem['style_input'], args.model_weights, reuse_vars=reuse_vars)
+        content_net, _ = vgg19.build_network(stem['content_input'], args.model_weights, reuse_vars=reuse_vars)
+        temporal_net, _ = vgg19.build_network(stem['prev_input'], args.model_weights, reuse_vars=reuse_vars)
         self.nets.append(net)
         self.style_nets.append(style_net)
+        self.content_nets.append(content_net)
+        self.temporal_nets.append(temporal_net)
 
         # Build image pyramid if more than one octave is specified.
         downsample = pyramid.gaussian
@@ -480,7 +486,9 @@ class Model:
             style_net, _ = vgg19.build_network(s, args.model_weights, reuse_vars=reuse_vars)
             self.nets.append(net)
             self.style_nets.append(style_net)
-        return self.stem, self.nets, self.style_nets
+            self.content_nets.append(content_net)
+            self.temporal_nets.append(temporal_net)
+        return self.stem, self.nets, self.style_nets, self.content_nets, self.temporal_nets
 
     def load(self, init_img, content_img, style_imgs):
         """Build model and load weights.  Content image is only used for computing size."""
@@ -589,6 +597,12 @@ class Model:
         self.content_weights = tf.Variable(np.zeros_like(c), trainable=False)
         return temporal_loss(self.stem['input'], self.stem['prev_input'], self.content_weights)
 
+    def setup_shortterm_temporal_loss(self):
+        c = get_content_weights(args.start_frame, args.start_frame + 1)
+        # Initializes content weights to all zeros for first frame
+        self.content_weights = tf.Variable(np.zeros_like(c), trainable=False)
+        return temporal_loss(self.stem['input'], self.stem['prev_input'], self.content_weights)
+
     def update_shortterm_temporal_loss(self, frame):
         if frame is None or frame == 0 or (frame == 1 and args.start_frame == 1):
             return
@@ -598,28 +612,22 @@ class Model:
         self.sess.run(self.stem['prev_input_assign'], feed_dict={self.stem['prev_input_in']: w})
         self.sess.run(self.content_weights.assign(c))
 
-    def setup_content_loss(self, content_img):
+    def setup_content_loss(self):
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: content_img})
         content_losses = []
         content_layers = []
-        content_vars = []
-        for net in self.nets:
-            for layer_name, weight in zip(args.content_layers, args.content_layer_weights):
+        for o, (net, content_net) in enumerate(zip(self.nets, self.content_nets)):
+            octave_weight = weight_for_octave(o)
+            for layer_name, content_layer_weight in zip(args.content_layers, args.content_layer_weights):
                 layer_t = net[layer_name]
-                activations = self.sess.run(layer_t)
-                content_t = tf.Variable(activations, trainable=False)
-                content_losses.append(losses.content_layer_loss(content_t, layer_t) * weight)
-                content_layers.append(layer_t)
-                content_vars.append(content_t)
-        self.content_vars = content_vars
-        self.update_content_ops = [v.assign(l) for v, l in zip(content_vars, content_layers)]
+                content_layer_t = content_net[layer_name]
+                content_losses.append(losses.content_layer_loss(content_layer_t, layer_t) * content_layer_weight)
         content_loss = tf.reduce_mean(content_losses)
         return content_loss
 
     def update_content_loss(self, content_img):
-        self.sess.run(self.stem['input_assign'], feed_dict={self.stem['input_in']: content_img})
-        self.sess.run(self.update_content_ops)
+        self.sess.run(self.stem['content_input_assign'], feed_dict={self.stem['content_input_in']: content_img})
 
     def update_style_loss(self, style_images):
         style_images_stacked = np.concatenate(style_images, axis=0)
@@ -629,7 +637,7 @@ class Model:
         """Do gradient descent, save style image"""
         self.update_content_loss(content_img)
         self.update_style_loss(style_imgs)
-        # self.update_shortterm_temporal_loss(frame)
+        self.update_perceptual_temporal_loss(frame)
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
         if args.reset_optimizer:
