@@ -791,7 +791,7 @@ def get_init_image(init_type, content_img, style_imgs, frame=None):
         init_img = get_prev_frame(frame)
         return preprocess(init_img.astype(np.float32))
     elif init_type == 'prev_warped':
-        init_img = get_prev_warped_frame(frame)
+        init_img = get_prev_warped_frame(frame, content_img)
         return init_img
 
 
@@ -885,7 +885,7 @@ def get_flow_input_dir():
         return args.video_input_dir
 
 
-def get_prev_warped_frame(frame):
+def get_prev_warped_frame(frame, content_img):
     prev_img = get_prev_frame(frame)
     prev_frame = max(frame - 1, 0)
     # backwards flow: current frame -> previous frame
@@ -897,7 +897,21 @@ def get_prev_warped_frame(frame):
         print('Scaling optical flow up by %f' % scale_f)
         flow = optical_flow.resize_flow(flow, prev_img.shape[1], prev_img.shape[0])
         flow = flow * scale_f  # Multiplies displacement vectors by scale factor.
-    warped_img = optical_flow.warp_image(prev_img, flow).astype(np.float32)
+    # Filter flow by thresholding on content image value.
+    # Approximate luminance
+    luma =  0.3 * (content_img[:,:,0]) + (0.59 * content_img[:,:,1]) + (0.11 * content_img[:,:,2])
+
+    threshold = 0.95
+    _, h, w = flow.shape
+    flow_map = np.zeros(flow.shape, dtype=np.float32)
+    for y in range(h):
+        flow_map[1, y, :] = float(y) + flow[1, y, :]
+    for x in range(w):
+        flow_map[0, :, x] = float(x) + flow[0, :, x]
+    src_match = luma < threshold
+    dest_match = luma[np.transpose(flow_map, [1,2,0])] < threshold
+    flow_mask = np.expand_dims(src_match | dest_match, 0)
+    warped_img = optical_flow.warp_image(prev_img, flow * flow_mask).astype(np.float32)
     img = preprocess(warped_img)
     return img
 
