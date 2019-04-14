@@ -909,7 +909,7 @@ def get_prev_warped_frame(frame, content_img):
     for x in range(w):
         flow_map[0, :, x] = float(x) + flow[0, :, x]
     src_match = luma < threshold
-    dest_match = luma[np.transpose(flow_map.as_type(np.int32), [1,2,0])] < threshold
+    dest_match = luma[np.transpose(flow_map.astype(np.int32), [1,2,0])] < threshold
     flow_mask = np.expand_dims(src_match | dest_match, 0)
     warped_img = optical_flow.warp_image(prev_img, flow * flow_mask).astype(np.float32)
     img = preprocess(warped_img)
