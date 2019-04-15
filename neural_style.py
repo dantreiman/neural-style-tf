@@ -906,8 +906,8 @@ def get_prev_warped_frame(frame, content_img):
     # Approximate luminance
     warped_content_img = optical_flow.warp_image(content_img[0], flow).astype(np.float32)
     delta = np.linalg.norm(content_img[0] - warped_content_img, axis=2)
-    threshold = 0.01
-    flow_mask = np.expand_dims(delta >= threshold, 0)
+    threshold = 0.00001
+    flow_mask = np.expand_dims(delta > threshold, 0)
     print('delta min: ' + str(np.min(delta)))
     print('delta mean: ' + str(np.mean(delta)))
     print('delta median: ' + str(np.median(delta)))
