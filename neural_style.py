@@ -887,6 +887,11 @@ def get_flow_input_dir():
 
 def get_prev_warped_frame(frame, content_img):
     prev_img = get_prev_frame(frame)
+    print('content_img.shape: ' + str(content_img.shape))
+    print('prev_img.shape: ' + str(prev_img.shape))
+    print('prev_img.max: ' + str(np.max(prev_img)))
+    print('content_img.max: ' + str(np.max(content_img)))
+
     prev_frame = max(frame - 1, 0)
     # backwards flow: current frame -> previous frame
     fn = args.backward_optical_flow_frmt.format(str(frame), str(prev_frame))
