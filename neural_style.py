@@ -84,7 +84,7 @@ def parse_args():
                         help='VGG19 layers used for the content image. (default: %(default)s)')
 
     parser.add_argument('--temporal_layers', nargs='+', type=str,
-                        default=['conv4_2'],
+                        default=['conv1_2'],
                         help='VGG19 layers used for the perceptual loss on the previous frame. (default: %(default)s)')
 
     parser.add_argument('--style_layers', nargs='+', type=str,
@@ -94,6 +94,10 @@ def parse_args():
     parser.add_argument('--content_layer_weights', nargs='+', type=float,
                         default=[1.0],
                         help='Contributions (weights) of each content layer to loss. (default: %(default)s)')
+
+    parser.add_argument('--temporal_layer_weights', nargs='+', type=float,
+                        default=[1.0],
+                        help='Contributions (weights) of each temporal layer to loss. (default: %(default)s)')
 
     parser.add_argument('--style_layer_weights', nargs='+', type=float,
                         default=[0.2, 0.2, 0.2, 0.2, 0.2],
@@ -417,11 +421,10 @@ class Model:
         stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
 
         c = get_content_weights(args.start_frame, args.start_frame + 1)
-        stem['content_weights_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))
+        print('content_weights.shape: ' + str(c.shape))
+        stem['content_weights_in'] = tf.placeholder(tf.float32, shape=(1, h, w, 1))
         stem['content_weights'] = tf.Variable(np.zeros_like(c), dtype=tf.float32, trainable=False)
         stem['content_weights_assign'] = stem['content_weights'].assign(stem['content_weights_in'])
-        self.content_weights
-
 
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
         stem['reset_global_step'] = stem['global_step'].assign(0)
@@ -515,12 +518,11 @@ class Model:
         # self.debug_losses['tv'] = L_tv
 
         # video temporal loss
-        # if args.video:
-        # gamma      = args.temporal_weight
-        # gamma = 0.0
-        # L_temporal = self.setup_shortterm_temporal_loss()
-        # self.debug_losses['temporal'] = L_temporal
-        # L_total   += gamma * L_temporal
+        if args.video:
+            gamma = args.temporal_weight
+            L_temporal = self.setup_shortterm_temporal_loss()
+            # self.debug_losses['temporal'] = L_temporal
+            L_total   += gamma * L_temporal
 
         # optimization algorithm
         self.loss = L_total
@@ -584,10 +586,15 @@ class Model:
         return tf.reduce_mean(style_losses)
 
     def setup_shortterm_temporal_loss(self):
-
-
-
-        return temporal_loss(self.stem['input'], self.stem['prev_input'])
+        temporal_losses = []
+        for o, (net, temporal_net) in enumerate(zip(self.nets, self.temporal_nets)):
+            octave_weight = weight_for_octave(o)
+            for layer_name, temporal_layer_weight in zip(args.temporal_layers, args.temporal_layer_weights):
+                layer_t = net[layer_name]
+                temporal_layer_t = content_net[layer_name]
+                temporal_losses.append(losses.content_layer_loss(temporal_layer_t, layer_t) * temporal_layer_weight * octave_weight)
+        temporal_loss = tf.reduce_mean(temporal_losses)
+        return temporal_loss
 
     def update_shortterm_temporal_loss(self, frame):
         if frame is None or frame == 0 or (frame == 1 and args.start_frame == 1):
@@ -595,20 +602,17 @@ class Model:
         prev_frame = max(frame - 1, 0)
         w = get_prev_warped_frame(frame)
         c = get_content_weights(frame, prev_frame)
-        self.sess.run(self.stem['prev_input_assign'], feed_dict={self.stem['prev_input_in']: w})
-        self.sess.run(self.content_weights.assign(c))
+        self.sess.run([self.stem['prev_input_assign'], self.stem['content_weights_assign']],
+                      feed_dict={self.stem['prev_input_in']: w, self.stem['content_weights_in']: c})
 
     def setup_content_loss(self):
-        stem = self.stem
-        self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: content_img})
         content_losses = []
-        content_layers = []
         for o, (net, content_net) in enumerate(zip(self.nets, self.content_nets)):
             octave_weight = weight_for_octave(o)
             for layer_name, content_layer_weight in zip(args.content_layers, args.content_layer_weights):
                 layer_t = net[layer_name]
                 content_layer_t = content_net[layer_name]
-                content_losses.append(losses.content_layer_loss(content_layer_t, layer_t) * content_layer_weight)
+                content_losses.append(losses.content_layer_loss(content_layer_t, layer_t) * content_layer_weight * octave_weight)
         content_loss = tf.reduce_mean(content_losses)
         return content_loss
 
