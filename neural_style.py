@@ -904,9 +904,9 @@ def get_prev_warped_frame(frame, content_img):
         flow = flow * scale_f  # Multiplies displacement vectors by scale factor.
     # Filter flow by thresholding on content image value.
     # Approximate luminance
-    warped_content_img = optical_flow.warp_image(content_img, flow).astype(np.float32)
+    warped_content_img = optical_flow.warp_image(content_img[0], flow).astype(np.float32)
     def approx_luminance(img):
-        return 0.3 * (img[:,:,0]) + (0.59 * img[:,:,1]) + (0.11 * img[:,:,2])
+        return (0.3 * img[:,:,0]) + (0.59 * img[:,:,1]) + (0.11 * img[:,:,2])
     content_luma =  approx_luminance(content_img[0])  # content img has a batch dim.
     warped_content_luma = approx_luminance(warped_content_img)
     threshold = 250.0  # < 255.0
