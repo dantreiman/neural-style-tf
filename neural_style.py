@@ -911,7 +911,7 @@ def get_prev_warped_frame(frame, content_img):
     print('delta max: ' + str(np.max(delta)))
     print('delta std: ' + str(np.std(delta)))
 
-    threshold = 5.0
+    threshold = .34
     flow_mask = np.expand_dims(delta > threshold, 0)
 
     print('mask_mean: ' + str(np.mean(flow_mask.astype(np.float32))))
