@@ -213,6 +213,9 @@ def parse_args():
     parser.add_argument('--flow_input_dir', type=str,
                         help='Relative or absolute directory path to optical flow files. Defaults to video_input_dir if not specified.')
 
+    parser.add_argument('--flow_filter_threshold', type=float, default=-1.0,
+                        help='Filter optical flow by color distance.  For images with stationary backgrounds, setting this to a small number (0.1-0.2) may reduce motion noise in backgrounds')
+
     parser.add_argument('--video_input_dir', type=str,
                         default='./video_input',
                         help='Relative or absolute directory path to input frames.')
@@ -887,11 +890,10 @@ def get_flow_input_dir():
 
 def get_prev_warped_frame(frame, content_img):
     prev_img = get_prev_frame(frame)
-    print('content_img.shape: ' + str(content_img.shape))
-    print('prev_img.shape: ' + str(prev_img.shape))
-    print('prev_img.max: ' + str(np.max(prev_img)))
-    print('content_img.max: ' + str(np.max(content_img)))
-
+    #print('content_img.shape: ' + str(content_img.shape))
+    #print('prev_img.shape: ' + str(prev_img.shape))
+    #print('prev_img.max: ' + str(np.max(prev_img)))
+    #print('content_img.max: ' + str(np.max(content_img)))
     prev_frame = max(frame - 1, 0)
     # backwards flow: current frame -> previous frame
     fn = args.backward_optical_flow_frmt.format(str(frame), str(prev_frame))
@@ -904,19 +906,20 @@ def get_prev_warped_frame(frame, content_img):
         flow = flow * scale_f  # Multiplies displacement vectors by scale factor.
     # Filter flow by thresholding on content image value.
     # Approximate luminance
-    warped_content_img = optical_flow.warp_image(content_img[0], flow).astype(np.float32)
-    delta = np.linalg.norm(content_img[0] - warped_content_img, axis=2)
-    threshold = 0.2
-    flow_mask = np.expand_dims(delta > threshold, 0)
-    print('delta min: ' + str(np.min(delta)))
-    print('delta mean: ' + str(np.mean(delta)))
-    print('delta median: ' + str(np.median(delta)))
-    print('delta max: ' + str(np.max(delta)))
-    print('delta std: ' + str(np.std(delta)))
-    print('threshold: ' + str(threshold))
-
-    print('mask_mean: ' + str(np.mean(flow_mask.astype(np.float32))))
-    warped_img = optical_flow.warp_image(prev_img, flow * flow_mask).astype(np.float32)
+    threshold = args.flow_filter_threshold
+    if threshold >= 0:
+        warped_content_img = optical_flow.warp_image(content_img[0], flow).astype(np.float32)
+        delta = np.linalg.norm(content_img[0] - warped_content_img, axis=2)
+        flow_mask = np.expand_dims(delta > threshold, 0)
+        # print('delta min: ' + str(np.min(delta)))
+        # print('delta mean: ' + str(np.mean(delta)))
+        # print('delta median: ' + str(np.median(delta)))
+        # print('delta max: ' + str(np.max(delta)))
+        # print('delta std: ' + str(np.std(delta)))
+        # print('threshold: ' + str(threshold))
+        # print('mask_mean: ' + str(np.mean(flow_mask.astype(np.float32))))
+        flow = flow * flow_mask
+    warped_img = optical_flow.warp_image(prev_img, flow).astype(np.float32)
     img = preprocess(warped_img)
     return img
 
