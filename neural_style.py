@@ -165,6 +165,9 @@ def parse_args():
                         choices=['constant', 'exponential', 'cosine'],
                         help='Learning rate decay method. (default|recommended: %(default)s)')
 
+    parser.add_argument('--reset_optimizer', action='store_true',
+                        help='Reset optimizer parameters (i.e. momentum) before next frame.')
+
     parser.add_argument('--early_stopping', action='store_true',
                         help='Stop each frame early if loss change is below a target. Only works for ADAM.')
 
@@ -403,6 +406,7 @@ class Model:
             self.debug_losses = {}
             self.tf_optimizer = None
             self.sc_optimizer = None
+            self.tf_optimizer_initializer = None
             self.train_op = None
             self.max_tf_iterations = None  # Max iterations of whichever TF optimizer we're using.
             self.max_bfgs_iterations = None  # Max iterations of L-BFGS.
@@ -522,6 +526,7 @@ class Model:
         self.setup_optimizer(self.loss)
         if args.optimizer in ('adam', 'mixed', 'gd', 'adagrad', 'nesterov'):
             self.train_op = self.tf_optimizer.minimize(self.loss, global_step=stem['global_step'])
+            self.reset_optimizer_op = tf.variables_initializer(self.tf_optimizer.variables())
         self.sess.run(tf.global_variables_initializer())
 
 
@@ -626,6 +631,8 @@ class Model:
         # self.update_shortterm_temporal_loss(frame)
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
+        if args.reset_optimizer:
+            self.ress.run(self.reset_optimizer_op)
         if args.optimizer in ('adam', 'mixed'):
             self.minimize_with_adam(self.loss)
         if args.optimizer in ('lbfgs', 'mixed'):
