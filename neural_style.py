@@ -632,7 +632,7 @@ class Model:
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
         if args.reset_optimizer:
-            self.ress.run(self.reset_optimizer_op)
+            self.sess.run(self.reset_optimizer_op)
         if args.optimizer in ('adam', 'mixed'):
             self.minimize_with_adam(self.loss)
         if args.optimizer in ('lbfgs', 'mixed'):
