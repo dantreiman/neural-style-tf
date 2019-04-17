@@ -436,6 +436,7 @@ class Model:
         stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
 
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
+        stem['reset_global_step'] = stem['global_step'].assign(0)
         if args.learning_rate_decay == 'exponential':
             stem['learning_rate'] = tf.train.exponential_decay(args.learning_rate, stem['global_step'],
                                                                500, 0.96, staircase=True)
@@ -632,7 +633,7 @@ class Model:
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
         if args.reset_optimizer:
-            self.sess.run(self.reset_optimizer_op)
+            self.sess.run([self.reset_optimizer_op, stem['reset_global_step']])
         if args.optimizer in ('adam', 'mixed'):
             self.minimize_with_adam(self.loss)
         if args.optimizer in ('lbfgs', 'mixed'):
