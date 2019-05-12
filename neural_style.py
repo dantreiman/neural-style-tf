@@ -597,11 +597,11 @@ class Model:
         temporal_loss = tf.reduce_mean(temporal_losses)
         return temporal_loss
 
-    def update_shortterm_temporal_loss(self, frame):
+    def update_shortterm_temporal_loss(self, frame, content_img):
         if frame is None or frame == 0 or (frame == 1 and args.start_frame == 1):
             return
         prev_frame = max(frame - 1, 0)
-        w = get_prev_warped_frame(frame)
+        w = get_prev_warped_frame(frame, content_img)
         c = get_content_weights(frame, prev_frame)
         self.sess.run([self.stem['prev_input_assign'], self.stem['content_weights_assign']],
                       feed_dict={self.stem['prev_input_in']: w, self.stem['content_weights_in']: c})
@@ -628,7 +628,7 @@ class Model:
         """Do gradient descent, save style image"""
         self.update_content_loss(content_img)
         self.update_style_loss(style_imgs)
-        self.update_shortterm_temporal_loss(frame)
+        self.update_shortterm_temporal_loss(frame, content_img)
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
         if args.reset_optimizer:
