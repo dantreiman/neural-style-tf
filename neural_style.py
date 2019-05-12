@@ -422,9 +422,9 @@ class Model:
 
         c = get_content_weights(args.start_frame + 1, args.start_frame)
         print('content_weights.shape: ' + str(c.shape))
-        stem['content_weights_in'] = tf.placeholder(tf.float32, shape=(1, h, w))
-        stem['content_weights'] = tf.Variable(np.zeros((1, h, w, 1)), dtype=tf.float32, trainable=False)
-        stem['content_weights_assign'] = stem['content_weights'].assign(tf.expand_dims(stem['content_weights_in'], -1))
+        stem['content_weights_in'] = tf.placeholder(tf.float32, shape=(h, w, 3))
+        stem['content_weights'] = tf.Variable(np.zeros((1, h, w, 3)), dtype=tf.float32, trainable=False)
+        stem['content_weights_assign'] = stem['content_weights'].assign(tf.expand_dims(stem['content_weights_in'], 0))
 
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
         stem['reset_global_step'] = stem['global_step'].assign(0)
