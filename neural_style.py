@@ -405,19 +405,19 @@ class Model:
         _, h, w, d = input_img.shape
         stem = {}
         stem['input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into input
-        stem['input'] = tf.Variable(np.zeros((1, h, w, d), dtype=tf.float32), trainable=True)
+        stem['input'] = tf.Variable(np.zeros((1, h, w, d)), dtype=tf.float32, trainable=True)
         stem['input_assign'] = stem['input'].assign(stem['input_in'])
 
         stem['content_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed content image in.
-        stem['content_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=tf.float32), trainable=False)
+        stem['content_input'] = tf.Variable(np.zeros((1, h, w, d)), dtype=tf.float32, trainable=False)
         stem['content_input_assign'] = stem['content_input'].assign(stem['content_input_in'])
 
         stem['prev_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed previous image into temporal loss function.
-        stem['prev_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=tf.float32),  trainable=False)  # Previous input for temporal consistency
+        stem['prev_input'] = tf.Variable(np.zeros((1, h, w, d)), dtype=tf.float32,  trainable=False)  # Previous input for temporal consistency
         stem['prev_input_assign'] = stem['prev_input'].assign(stem['prev_input_in'])
 
         stem['style_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed style image (or images)
-        stem['style_input'] = tf.Variable(np.zeros((n_styles, h, w, d), dtype=tf.float32), trainable=False)
+        stem['style_input'] = tf.Variable(np.zeros((n_styles, h, w, d)), dtype=np.float32, trainable=False)
         stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
 
         c = get_content_weights(args.start_frame, args.start_frame + 1)
