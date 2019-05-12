@@ -628,7 +628,7 @@ class Model:
         """Do gradient descent, save style image"""
         self.update_content_loss(content_img)
         self.update_style_loss(style_imgs)
-        self.update_perceptual_temporal_loss(frame)
+        self.update_shortterm_temporal_loss(frame)
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
         if args.reset_optimizer:
