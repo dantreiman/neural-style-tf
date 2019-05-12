@@ -420,7 +420,7 @@ class Model:
         stem['style_input'] = tf.Variable(np.zeros((n_styles, h, w, d)), dtype=np.float32, trainable=False)
         stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
 
-        c = get_content_weights(args.start_frame, args.start_frame + 1)
+        c = get_content_weights(args.start_frame + 1, args.start_frame)
         print('content_weights.shape: ' + str(c.shape))
         stem['content_weights_in'] = tf.placeholder(tf.float32, shape=(1, h, w))
         stem['content_weights'] = tf.Variable(np.zeros((1, h, w, 1)), dtype=tf.float32, trainable=False)
@@ -603,6 +603,8 @@ class Model:
         prev_frame = max(frame - 1, 0)
         w = get_prev_warped_frame(frame, content_img)
         c = get_content_weights(frame, prev_frame)
+        print('w.shape: ' + str(w.shape))
+        print('c.shape: ' + str(c.shape))
         self.sess.run([self.stem['prev_input_assign'], self.stem['content_weights_assign']],
                       feed_dict={self.stem['prev_input_in']: w, self.stem['content_weights_in']: c})
 
