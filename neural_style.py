@@ -424,7 +424,7 @@ class Model:
         print('content_weights.shape: ' + str(c.shape))
         stem['content_weights_in'] = tf.placeholder(tf.float32, shape=(1, h, w, 1))
         stem['content_weights'] = tf.Variable(np.zeros_like(c), dtype=tf.float32, trainable=False)
-        stem['content_weights_assign'] = stem['content_weights'].assign(stem['content_weights_in'])
+        stem['content_weights_assign'] = stem['content_weights'].assign(tf.expand_dims(stem['content_weights_in'], -1))
 
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
         stem['reset_global_step'] = stem['global_step'].assign(0)
