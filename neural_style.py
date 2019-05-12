@@ -453,6 +453,7 @@ class Model:
         net, reuse_vars = vgg19.build_network(t_transformed, args.model_weights)
         style_net, _ = vgg19.build_network(stem['style_input'], args.model_weights, reuse_vars=reuse_vars)
         content_net, _ = vgg19.build_network(stem['content_input'], args.model_weights, reuse_vars=reuse_vars)
+        # TODO: try with content weights   stem['content_weights_in']
         temporal_net, _ = vgg19.build_network(stem['prev_input'], args.model_weights, reuse_vars=reuse_vars)
         self.nets.append(net)
         self.style_nets.append(style_net)
@@ -591,7 +592,7 @@ class Model:
             octave_weight = weight_for_octave(o)
             for layer_name, temporal_layer_weight in zip(args.temporal_layers, args.temporal_layer_weights):
                 layer_t = net[layer_name]
-                temporal_layer_t = content_net[layer_name]
+                temporal_layer_t = temporal_net[layer_name]
                 temporal_losses.append(losses.content_layer_loss(temporal_layer_t, layer_t) * temporal_layer_weight * octave_weight)
         temporal_loss = tf.reduce_mean(temporal_losses)
         return temporal_loss
