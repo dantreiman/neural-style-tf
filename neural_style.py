@@ -499,7 +499,7 @@ class Model:
             L_style = self.sum_style_losses()
 
         # content loss
-        L_content = self.setup_content_loss(content_img)
+        L_content = self.setup_content_loss()
 
         # denoising loss
         L_tv = tf.image.total_variation(stem['input'])
