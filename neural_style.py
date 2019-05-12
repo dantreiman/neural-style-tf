@@ -489,7 +489,7 @@ class Model:
     def load(self, init_img, content_img, style_imgs):
         """Build model and load weights.  Content image is only used for computing size."""
         # setup network
-        stem, nets, style_nets = self.build_network(content_img, n_styles=len(style_imgs))
+        stem, nets, style_nets, temporal_nets = self.build_network(content_img, n_styles=len(style_imgs))
         # style loss
         if args.style_mask:
             L_style = self.sum_masked_style_losses()
