@@ -903,9 +903,9 @@ def get_prev_warped_frame(frame, content_img):
     prev_frame = max(frame - 1, 0)
     # backwards flow: current frame -> previous frame
     invert_flow = 1
-    if 'backward_optical_flow_frmt' in args:
+    if args.backward_optical_flow_frmt:
         fn = args.backward_optical_flow_frmt.format(frame, prev_frame)
-    elif 'forward_optical_flow_frmt' in args:
+    elif args.forward_optical_flow_frmt:
         fn = args.forward_optical_flow_frmt.format(frame, prev_frame)
         invert_flow = -1
     path = os.path.join(get_flow_input_dir(), fn)
