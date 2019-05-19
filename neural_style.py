@@ -904,7 +904,7 @@ def get_prev_warped_frame(frame, content_img):
     #print('content_img.max: ' + str(np.max(content_img)))
     prev_frame = max(frame - 1, 0)
     # backwards flow: current frame -> previous frame
-    fn = args.backward_optical_flow_frmt.format(str(frame), str(prev_frame))
+    fn = args.backward_optical_flow_frmt.format(frame, prev_frame)
     path = os.path.join(get_flow_input_dir(), fn)
     flow = optical_flow.read_flow_file(path)
     scale_f = args.superpixel_scale
