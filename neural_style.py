@@ -232,11 +232,9 @@ def parse_args():
                         help='Filename format of the input content frames.')
 
     parser.add_argument('--backward_optical_flow_frmt', type=str,
-                        default='backward_{}_{}.flo',
                         help='Filename format of the backward optical flow files.')
 
     parser.add_argument('--forward_optical_flow_frmt', type=str,
-                        default='forward_{}_{}.flo',
                         help='Filename format of the forward optical flow files')
 
     parser.add_argument('--content_weights_frmt', type=str,
@@ -904,9 +902,14 @@ def get_prev_warped_frame(frame, content_img):
     #print('content_img.max: ' + str(np.max(content_img)))
     prev_frame = max(frame - 1, 0)
     # backwards flow: current frame -> previous frame
-    fn = args.backward_optical_flow_frmt.format(frame, prev_frame)
+    invert_flow = 1
+    if 'backward_optical_flow_frmt' in args:
+        fn = args.backward_optical_flow_frmt.format(frame, prev_frame)
+    elif 'forward_optical_flow_frmt' in args:
+        fn = args.forward_optical_flow_frmt.format(frame, prev_frame)
+        invert_flow = -1
     path = os.path.join(get_flow_input_dir(), fn)
-    flow = optical_flow.read_flow_file(path)
+    flow = optical_flow.read_flow_file(path) * invert_flow
     scale_f = args.superpixel_scale
     if scale_f > 1.0:
         print('Scaling optical flow up by %f' % scale_f)
