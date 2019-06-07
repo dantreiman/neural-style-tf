@@ -231,10 +231,10 @@ def parse_args():
                         default='frame_{}.png',
                         help='Filename format of the input content frames.')
 
-    parser.add_argument('--backward_optical_flow_frmt', type=str,
+    parser.add_argument('--backward_optical_flow_frmt', type=str,  # default='backward_{}_{}.flo'
                         help='Filename format of the backward optical flow files.')
 
-    parser.add_argument('--forward_optical_flow_frmt', type=str,
+    parser.add_argument('--forward_optical_flow_frmt', type=str, # default='forward_{}_{}.flo'
                         help='Filename format of the forward optical flow files')
 
     parser.add_argument('--content_weights_frmt', type=str,
