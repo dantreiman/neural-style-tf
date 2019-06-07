@@ -347,9 +347,26 @@ def read_image(path):
     return img
 
 
+def write_image_with_retries(path, img, retries=0, max_retries=2):
+    if retries > max_retries:
+        print('Error: failed')
+        raise OSError(errno.ENOENT, "Failed to write image to path: ", path)
+        return
+    cv2.imwrite(path, img)
+    # Verify the image
+    if not os.path.isfile(path):
+        print('Warning: failed to write to %s, retrying' % path)
+        return write_image_with_retries(path, img, retries + 1, max_retries)
+    img_copy = cv2.imread(path, cv2.IMREAD_COLOR)
+    if img_copy is None:
+        print('Warning: image written to %s not readable, retrying' % path)
+        os.remove(path)
+        return write_image_with_retries(path, img, retries + 1, max_retries)
+
+
 def write_image(path, img):
     img = postprocess(img)
-    cv2.imwrite(path, img)
+    write_image_with_retries(path, img)
 
 
 def preprocess(img):
