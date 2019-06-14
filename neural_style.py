@@ -6,8 +6,11 @@ import time
 import cv2
 import os
 
+import cv_image_ops
+import image_transforms
 import losses
 import optical_flow
+import procedural_flow
 import pyramid
 import transform  # Borrowed from /data/notebooks/deepdream/transform.py
 import vgg19
@@ -231,6 +234,9 @@ def parse_args():
                         default='frame_{}.png',
                         help='Filename format of the input content frames.')
 
+    parser.add_argument('--procedural_flow', type=str,
+                        help='Procedural flow function to use.  One of procedural_flow, backward_optical_flow_frmt, forward_optical_flow_frmt must be specified.')
+
     parser.add_argument('--backward_optical_flow_frmt', type=str,  # default='backward_{}_{}.flo'
                         help='Filename format of the backward optical flow files.')
 
@@ -426,6 +432,9 @@ class Model:
             self.max_tf_iterations = None  # Max iterations of whichever TF optimizer we're using.
             self.max_bfgs_iterations = None  # Max iterations of L-BFGS.
             self.set_max_iterations(args.max_iterations)
+            self.flow_function = None       # The function that generates our flow field (procedural flow mode)
+            self.grid = None                # Cached input grid
+            self.displacement_field = None  # Used to store point field for procedural flows
 
     def set_max_iterations(self, max_iterations):
         if args.optimizer == 'mixed':
@@ -544,7 +553,13 @@ class Model:
             self.train_op = self.tf_optimizer.minimize(self.loss, global_step=stem['global_step'])
             self.reset_optimizer_op = tf.variables_initializer(self.tf_optimizer.variables())
         self.sess.run(tf.global_variables_initializer())
-
+        if args.procedural_flow:
+            self.flow_function = procedural_flow['args.procedural_flow']
+            self.grid = image_transforms.unit_grid(content_img.shape[0], content_img.shape[1], center=None) * 5
+            x = np.arange(0, self.grid.shape[1])
+            y = np.arange(0, self.grid.shape[2])
+            xv, yv = np.meshgrid(x, y, sparse=False, indexing='ij')
+            self.displacement_field = np.stack((xv, yv), axis=2).astype(np.float32)
 
     def sum_masked_style_losses(self):
         style_losses = []
@@ -920,7 +935,10 @@ def get_prev_warped_frame(frame, content_img):
     prev_frame = max(frame - 1, 0)
     # backwards flow: current frame -> previous frame
     invert_flow = 1
-    if args.backward_optical_flow_frmt:
+    if args.procedural_flow:
+        # TODO: implement procedural flow
+        return prev_img
+    elif args.backward_optical_flow_frmt:
         fn = args.backward_optical_flow_frmt.format(frame, prev_frame)
     elif args.forward_optical_flow_frmt:
         fn = args.forward_optical_flow_frmt.format(frame, prev_frame)
