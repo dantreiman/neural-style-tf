@@ -41,7 +41,14 @@ def resize_flow(flow, width, height):
     return np.transpose(scaled, (2, 0, 1))
 
 
-def warp_image(src, flow):
+def warp_image(src, flow, interpolation=c):
+    """Warp an image using optical flow
+
+    Args:
+        src (np.array) The source image.
+        flow (np.array) The flow.
+        interpolation The interpolation method, recommended values are cv2.INTER_CUBIC, cv2.INTER_AREA or cv2.INTER_LANCZOS4
+    """
     _, h, w = flow.shape
     flow_map = np.zeros(flow.shape, dtype=np.float32)
     for y in range(h):
@@ -51,5 +58,5 @@ def warp_image(src, flow):
     # remap pixels to optical flow
     dst = cv2.remap(
         src, flow_map[0], flow_map[1],
-        interpolation=cv2.INTER_CUBIC, borderMode=cv2.BORDER_TRANSPARENT)
+        interpolation=interpolation, borderMode=cv2.BORDER_TRANSPARENT)
     return dst
