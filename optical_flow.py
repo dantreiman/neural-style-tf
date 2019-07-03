@@ -41,7 +41,7 @@ def resize_flow(flow, width, height):
     return np.transpose(scaled, (2, 0, 1))
 
 
-def warp_image(src, flow, interpolation=c):
+def warp_image(src, flow, interpolation=cv2.INTER_LANCZOS4):
     """Warp an image using optical flow
 
     Args:
