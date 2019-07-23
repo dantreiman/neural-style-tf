@@ -6,6 +6,7 @@ import time
 import cv2
 import os
 
+import exr
 import losses
 import optical_flow
 import pyramid
@@ -195,9 +196,13 @@ def parse_args():
     parser.add_argument('--video', action='store_true',
                         help='Boolean flag indicating if the user is generating a video.')
 
+    parser.add_argument('--initial_frame', type=int,
+                        default=1,
+                        help='The initial frame index of the sequence.')
+
     parser.add_argument('--start_frame', type=int,
                         default=1,
-                        help='First frame number.')
+                        help='First frame to render.')
 
     parser.add_argument('--end_frame', type=int,
                         default=1,
@@ -212,6 +217,17 @@ def parse_args():
                         choices=['prev_warped', 'prev', 'random', 'content', 'style'],
                         default='prev_warped',
                         help='Image used to initialize the network during the every rendering after the first frame.')
+
+    parser.add_argument('--depth_lookback', type=int,
+                        default=5,
+                        help='The number of frames to look back to compute frame pixel age for content loss.')
+
+    parser.add_argument('--depth_input_dir', type=str,
+                        help='Relative or absolute directory path to depth files.')
+
+    parser.add_argument('--depth_frame_frmt', type=str,
+                        default='depth_{}.exr',
+                        help='Filename format of the input depth frames.')
 
     parser.add_argument('--flow_input_dir', type=str,
                         help='Relative or absolute directory path to optical flow files. Defaults to video_input_dir if not specified.')
@@ -417,6 +433,8 @@ class Model:
             self.style_nets = [] # The style image networks for each layer of the pyramid.
             self.update_content_ops = []
             self.content_weights = None
+            self.pixel_age_frame = -1  # The frame index that we computed pixel age for last.
+            self.pixel_age = None  # The 'age' of each pixel, in frames.
             self.loss = None
             self.debug_losses = {}
             self.tf_optimizer = None
@@ -441,14 +459,20 @@ class Model:
         stem['input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into input
         stem['input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=True)
         stem['input_assign'] = stem['input'].assign(stem['input_in'])
+
         stem['prev_input_in'] = tf.placeholder(tf.float32, shape=(
             1, h, w, d))  # Used to feed previous image into temporal loss function.
         stem['prev_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32),
                                          trainable=False)  # Previous input for temporal consistency
         stem['prev_input_assign'] = stem['prev_input'].assign(stem['prev_input_in'])
+
         stem['style_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into style
         stem['style_input'] = tf.Variable(np.zeros((n_styles, h, w, d), dtype=np.float32), trainable=False)
         stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
+
+        stem['content_weights_in'] = tf.placeholder(tf.float32, shape=(h, w, 1))
+        stem['content_weights'] = tf.Variable(np.zeros((1, h, w, 1)), dtype=tf.float32, trainable=False)
+        stem['content_weights_assign'] = stem['content_weights'].assign(tf.expand_dims(stem['content_weights_in'], 0))
 
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
         stem['reset_global_step'] = stem['global_step'].assign(0)
@@ -530,12 +554,11 @@ class Model:
         # self.debug_losses['tv'] = L_tv
 
         # video temporal loss
-        # if args.video:
-        # gamma      = args.temporal_weight
-        # gamma = 0.0
-        # L_temporal = self.setup_shortterm_temporal_loss()
-        # self.debug_losses['temporal'] = L_temporal
-        # L_total   += gamma * L_temporal
+        if args.video:
+            gamma  = args.temporal_weight
+            L_z_temporal = self.setup_z_temporal_loss(content_frame)
+            # self.debug_losses['temporal'] = L_temporal
+            L_total += gamma * L_z_temporal
 
         # optimization algorithm
         self.loss = L_total
@@ -544,7 +567,6 @@ class Model:
             self.train_op = self.tf_optimizer.minimize(self.loss, global_step=stem['global_step'])
             self.reset_optimizer_op = tf.variables_initializer(self.tf_optimizer.variables())
         self.sess.run(tf.global_variables_initializer())
-
 
     def sum_masked_style_losses(self):
         style_losses = []
@@ -597,6 +619,20 @@ class Model:
             style_loss /= float(len(args.style_layers))
             style_losses.append(style_loss * img_weight)
         return tf.reduce_mean(style_losses)
+
+    def setup_z_temporal_loss(self, h, w):
+        self.pixel_age = np.zeros((h, w, 1), dtype=np.float32)
+        self.pixel_age_frame = -1
+        return temporal_loss(self.stem['input'], self.stem['prev_input'], self.stem['content_weights'])
+
+    def update_z_temporal_loss(self, frame):
+        frame_start = max(frame - args.depth_lookback, args.initial_frame, self.pixel_age_frame)
+
+        for i in range(frame_start, frame):
+
+        self.pixel_age_frame = frame
+
+
 
     def setup_shortterm_temporal_loss(self):
         c = get_content_weights(args.start_frame, args.start_frame + 1)
@@ -750,6 +786,11 @@ class Model:
         if args.optimizer == 'nesterov':
             self.tf_optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
 
+    def get_pixel_age(self, frame):
+        """Get a map of the age of each pixel (in frames), generating or updating if necessary."""
+        if self.pixel_age_frame < frame:
+            # Roll forward
+        return self.pixel_age
 
 def write_video_output(frame, output_img):
     fn = args.content_frame_frmt.format(str(frame).zfill(5))
@@ -960,6 +1001,19 @@ def get_content_weights(frame, prev_frame):
     forward_weights = optical_flow.read_weights_file(forward_path)
     # backward_weights = optical_flow.read_weights_file(backward_path)
     return forward_weights  # , backward_weights
+
+
+def get_depth_mask(frame, prev_frame):
+    """Gets a binary mask image where 1 represents new pixels which were revealed by occlusion."""
+    max_Δz = .01  # max depth difference between adjacent pixels
+    prev_z_fn = args.depth_frame_frmt.format(str(prev_frame).zfill(4))
+    z_fn = args.depth_frame_frmt.format(str(frame).zfill(4))
+    prev_z_path = os.path.join(args.depth_input_dir, prev_z_fn)
+    z_path = os.path.join(args.depth_input_dir, z_fn)
+    prev_z = exr.load_depth_file(prev_z_path)
+    z = exr.load_depth_file(z_path)
+    # Note: higher values = longer distance from the camera
+    return (z - prev_z) > max_Δz
 
 
 def convert_to_original_colors(content_img, stylized_img):
