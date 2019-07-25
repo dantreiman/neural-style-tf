@@ -642,6 +642,7 @@ class Model:
 
         age_per_frame = 10
         max_age = age_per_frame * args.depth_lookback
+        pixel_age = self.pixel_age
         # Updates pixel age.
         for i in range(frame_start, frame):
             # Warp content and pixel age
@@ -653,6 +654,7 @@ class Model:
             revealed = load_depth_mask(i, i-1)
             pixel_age_warped[revealed] = 0
             pixel_age = pixel_age_warped
+        self.pixel_age = pixel_age
         self.pixel_age_frame = frame
         # Update content weights
         content_weights = 1.0 - np.maximum(pixel_age, max_age).astype(np.float32) / max_age
