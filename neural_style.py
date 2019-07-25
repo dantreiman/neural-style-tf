@@ -651,7 +651,7 @@ class Model:
             # Increment pixel age
             pixel_age_warped = pixel_age_warped + age_per_frame
             # Mark revealed pixels as new
-            revealed = load_depth_mask(i, i-1)
+            revealed = load_depth_mask(i, i - 1)
             pixel_age_warped[revealed] = 0
             pixel_age = np.maximum(pixel_age_warped, max_age)
         self.pixel_age = pixel_age
@@ -659,7 +659,6 @@ class Model:
         # Update content weights
         content_weights = 1.0 - pixel_age.astype(np.float32) / max_age
         self.sess.run(self.stem['content_weights_assign'], feed_dict={self.stem['content_weights_in']: content_weights})
-
 
     def setup_shortterm_temporal_loss(self):
         c = get_content_weights(args.start_frame, args.start_frame + 1)
