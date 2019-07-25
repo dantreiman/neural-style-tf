@@ -222,6 +222,10 @@ def parse_args():
                         default=5,
                         help='The number of frames to look back to compute frame pixel age for content loss.')
 
+    parser.add_argument('--depth_index_offset', type=int,
+                        default=0,
+                        help='The difference in indexing between depth and content frames.')
+
     parser.add_argument('--depth_input_dir', type=str,
                         help='Relative or absolute directory path to depth files.')
 
@@ -1020,8 +1024,8 @@ def get_content_weights(frame, prev_frame):
 def get_depth_mask(frame, prev_frame):
     """Gets a binary mask image where 1 represents new pixels which were revealed by occlusion."""
     max_Δz = .01  # max depth difference between adjacent pixels
-    prev_z_fn = args.depth_frame_frmt.format(str(prev_frame).zfill(4))
-    z_fn = args.depth_frame_frmt.format(str(frame).zfill(4))
+    prev_z_fn = args.depth_frame_frmt.format(str(prev_frame + args.depth_index_offset).zfill(4))
+    z_fn = args.depth_frame_frmt.format(str(frame + args.depth_index_offset).zfill(4))
     prev_z_path = os.path.join(args.depth_input_dir, prev_z_fn)
     z_path = os.path.join(args.depth_input_dir, z_fn)
     prev_z = exr.load_depth_file(prev_z_path)
