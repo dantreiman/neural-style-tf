@@ -653,7 +653,7 @@ class Model:
             # Increment pixel age
             pixel_age_warped = pixel_age_warped + age_per_frame
             # Mark revealed pixels as new
-            revealed = load_depth_mask(i, i - 1)
+            revealed = get_depth_mask(i, i - 1)
             pixel_age_warped[revealed] = 0
             pixel_age = np.maximum(pixel_age_warped, max_age)
         self.pixel_age = pixel_age
