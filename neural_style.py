@@ -334,7 +334,7 @@ def temporal_loss(x, w, c):
     """
     c = tf.expand_dims(c, 0)
     D = float(np.prod(x.get_shape().as_list()))
-    print('temporal loss: D = %f' % D)
+    #print('temporal loss: D = %f' % D)
     loss = (1. / D) * tf.reduce_sum(c * tf.nn.l2_loss(x - w))
     loss = tf.cast(loss, tf.float32)
     return loss
@@ -653,11 +653,11 @@ class Model:
             # Mark revealed pixels as new
             revealed = load_depth_mask(i, i-1)
             pixel_age_warped[revealed] = 0
-            pixel_age = pixel_age_warped
+            pixel_age = np.maximum(pixel_age_warped, max_age)
         self.pixel_age = pixel_age
         self.pixel_age_frame = frame
         # Update content weights
-        content_weights = 1.0 - np.maximum(pixel_age, max_age).astype(np.float32) / max_age
+        content_weights = 1.0 - pixel_age.astype(np.float32) / max_age
         self.sess.run(self.stem['content_weights_assign'], feed_dict={self.stem['content_weights_in']: content_weights})
 
 
