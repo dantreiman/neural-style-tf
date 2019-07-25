@@ -324,22 +324,6 @@ def weight_for_octave(o):
 '''
 
 
-def temporal_loss(x, w, c):
-    """Compute temporal consistency loss.
-
-    Args:
-      x (tf.Tensor) The image.
-      w (tf.Tensor) The warped frame.
-      c (tf.Tensor) The content weights.
-    """
-    c = tf.expand_dims(c, 0)
-    D = float(np.prod(x.get_shape().as_list()))
-    #print('temporal loss: D = %f' % D)
-    loss = (1. / D) * tf.reduce_sum(c * tf.nn.l2_loss(x - w))
-    loss = tf.cast(loss, tf.float32)
-    return loss
-
-
 def get_longterm_weights(i, j):
     c_sum = 0.
     for k in range(args.prev_frame_indices):
@@ -635,7 +619,7 @@ class Model:
     def setup_z_temporal_loss(self, h, w):
         self.pixel_age = np.zeros((h, w), dtype=np.uint8)
         self.pixel_age_frame = -1
-        return temporal_loss(self.stem['input'], self.stem['prev_input'], self.stem['content_weights'])
+        return losses.weighted_content_loss(self.stem['input'], self.stem['prev_input'], self.stem['content_weights'])
 
     def update_z_temporal_loss(self, frame, content_img):
         frame_start = max(frame - args.depth_lookback, args.initial_frame, self.pixel_age_frame)

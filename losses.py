@@ -3,6 +3,21 @@
 import tensorflow as tf
 
 
+def weighted_content_loss(x, f, weights):
+    """Compute temporal consistency loss.
+
+    Args:
+      x (tf.Tensor) The image.
+      f (tf.Tensor) The target frame.
+      weights (tf.Tensor) The content weights.
+    """
+    _, h, w, d = x.get_shape()
+    #print('temporal loss: D = %f' % D)
+    K = (h * w * d)
+    loss = tf.reduce_sum(weights * tf.square(x - f)) / K
+    return loss
+
+
 def content_layer_loss(p, x, content_loss_function=1):
     _, h, w, d = p.get_shape()
     M = h.value * w.value
