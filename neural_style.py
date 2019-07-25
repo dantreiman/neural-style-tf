@@ -637,7 +637,7 @@ class Model:
         self.pixel_age_frame = -1
         return temporal_loss(self.stem['input'], self.stem['prev_input'], self.stem['content_weights'])
 
-    def update_z_temporal_loss(self, frame):
+    def update_z_temporal_loss(self, frame, content_img):
         frame_start = max(frame - args.depth_lookback, args.initial_frame, self.pixel_age_frame)
 
         age_per_frame = 10
@@ -659,8 +659,9 @@ class Model:
         self.pixel_age = pixel_age
         self.pixel_age_frame = frame
         # Update content weights
-        content_weights = 1.0 - pixel_age.astype(np.float32) / max_age
+        content_weights = 1.0 - (pixel_age.astype(np.float32) / max_age)
         self.sess.run(self.stem['content_weights_assign'], feed_dict={self.stem['content_weights_in']: content_weights})
+        self.sess.run(self.stem['prev_input_assign'], feed_dict={self.stem['prev_input_in']: content_img})
 
     def setup_shortterm_temporal_loss(self):
         c = get_content_weights(args.start_frame, args.start_frame + 1)
@@ -709,7 +710,7 @@ class Model:
         self.update_content_loss(content_img)
         self.update_style_loss(style_imgs)
         if args.depth_input_dir:
-            self.update_z_temporal_loss(frame)
+            self.update_z_temporal_loss(frame, content_img)
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
         if args.reset_optimizer:
