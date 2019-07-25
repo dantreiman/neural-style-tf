@@ -633,7 +633,7 @@ class Model:
         return tf.reduce_mean(style_losses)
 
     def setup_z_temporal_loss(self, h, w):
-        self.pixel_age = np.zeros((h, w, 1), dtype=np.uint8)
+        self.pixel_age = np.zeros((h, w), dtype=np.uint8)
         self.pixel_age_frame = -1
         return temporal_loss(self.stem['input'], self.stem['prev_input'], self.stem['content_weights'])
 
@@ -811,12 +811,6 @@ class Model:
             self.tf_optimizer = tf.train.AdagradOptimizer(learning_rate)
         if args.optimizer == 'nesterov':
             self.tf_optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
-
-    def get_pixel_age(self, frame):
-        """Get a map of the age of each pixel (in frames), generating or updating if necessary."""
-        if self.pixel_age_frame < frame:
-            # Roll forward
-        return self.pixel_age
 
 
 def write_video_output(frame, output_img):
