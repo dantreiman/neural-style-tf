@@ -233,6 +233,10 @@ def parse_args():
                         default='depth_{}.exr',
                         help='Filename format of the input depth frames.')
 
+    parser.add_argument('--depth_frame_digits', type=int,
+                        default=4,
+                        help='Number of digits used to index depth frames.')
+
     parser.add_argument('--flow_input_dir', type=str,
                         help='Relative or absolute directory path to optical flow files. Defaults to video_input_dir if not specified.')
 
@@ -249,6 +253,10 @@ def parse_args():
 
     parser.add_argument('--content_frame_frmt', type=str,
                         default='frame_{}.png',
+                        help='Filename format of the input content frames.')
+
+    parser.add_argument('--content_frame_digits', type=int,
+                        default=5,
                         help='Filename format of the input content frames.')
 
     parser.add_argument('--backward_optical_flow_frmt', type=str,  # default='backward_{}_{}.flo'
@@ -810,8 +818,9 @@ class Model:
             # Roll forward
         return self.pixel_age
 
+
 def write_video_output(frame, output_img):
-    fn = args.content_frame_frmt.format(str(frame).zfill(5))
+    fn = args.content_frame_frmt.format(str(frame).zfill(args.content_frame_digits))
     path = os.path.join(args.video_output_dir, fn)
     write_image(path, output_img)
 
@@ -881,7 +890,7 @@ def get_init_image(init_type, content_img, style_imgs, frame=None):
 
 
 def get_content_frame(frame):
-    fn = args.content_frame_frmt.format(str(frame).zfill(5))
+    fn = args.content_frame_frmt.format(str(frame).zfill(args.content_frame_digits))
     path = os.path.join(args.video_input_dir, fn)
     img = get_content_image(path)
     return img
@@ -924,7 +933,7 @@ def get_style_images_for_frame(content_img, frame):
             path = os.path.join(args.style_imgs_dir, style_fn)
         else:
             # Assume style video input uses same format.
-            path = os.path.join(args.style_imgs_dir, style_fn, args.content_frame_frmt.format(str(frame).zfill(5)))
+            path = os.path.join(args.style_imgs_dir, style_fn, args.content_frame_frmt.format(str(frame).zfill(args.content_frame_digits)))
         # bgr image
         img = cv2.imread(path, cv2.IMREAD_COLOR)
         check_image(img, path)
@@ -956,7 +965,7 @@ def get_mask_image(mask_img, width, height):
 def get_prev_frame(frame):
     # previously stylized frame
     prev_frame = max(frame - 1, 0)
-    fn = args.content_frame_frmt.format(str(prev_frame).zfill(5))
+    fn = args.content_frame_frmt.format(str(prev_frame).zfill(args.content_frame_digits))
     path = os.path.join(args.video_output_dir, fn)
     img = cv2.imread(path, cv2.IMREAD_COLOR)
     check_image(img, path)
@@ -1024,8 +1033,8 @@ def get_content_weights(frame, prev_frame):
 def get_depth_mask(frame, prev_frame):
     """Gets a binary mask image where 1 represents new pixels which were revealed by occlusion."""
     max_Δz = .01  # max depth difference between adjacent pixels
-    prev_z_fn = args.depth_frame_frmt.format(str(prev_frame + args.depth_index_offset).zfill(4))
-    z_fn = args.depth_frame_frmt.format(str(frame + args.depth_index_offset).zfill(4))
+    prev_z_fn = args.depth_frame_frmt.format(str(prev_frame + args.depth_index_offset).zfill(args.depth_frame_digits))
+    z_fn = args.depth_frame_frmt.format(str(frame + args.depth_index_offset).zfill(args.depth_frame_digits))
     prev_z_path = os.path.join(args.depth_input_dir, prev_z_fn)
     z_path = os.path.join(args.depth_input_dir, z_fn)
     prev_z = exr.load_depth_file(prev_z_path)
@@ -1078,7 +1087,7 @@ def render_video():
     needs_load = True
     # If a frame file exists with the number before our start frame, assume we are resuming a killed job
     prior_frame_path = os.path.join(args.video_input_dir,
-                                    args.content_frame_frmt.format(str(args.start_frame - 1).zfill(5)))
+                                    args.content_frame_frmt.format(str(args.start_frame - 1).zfill(args.content_frame_digits)))
     assume_resume = os.path.isfile(prior_frame_path)
     for frame in range(args.start_frame, args.end_frame + 1):
         print('\n---- RENDERING VIDEO FRAME: {}/{} ----\n'.format(frame, args.end_frame))
