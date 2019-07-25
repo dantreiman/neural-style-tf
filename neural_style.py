@@ -1049,8 +1049,8 @@ def get_depth_mask(frame, prev_frame):
     z_fn = args.depth_frame_frmt.format(str(frame + args.depth_index_offset).zfill(args.depth_frame_digits))
     prev_z_path = os.path.join(args.depth_input_dir, prev_z_fn)
     z_path = os.path.join(args.depth_input_dir, z_fn)
-    prev_z = exr.load_depth_file(prev_z_path)
-    z = exr.load_depth_file(z_path)
+    prev_z = exr.load_depth_file(prev_z_path)[:,:,0]  # Are all channels in the depth image the same?  IDK.
+    z = exr.load_depth_file(z_path)[:,:,0]
     # Note: higher values = longer distance from the camera
     return (z - prev_z) > max_Δz
 
