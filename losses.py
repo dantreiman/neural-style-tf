@@ -13,7 +13,7 @@ def weighted_content_loss(x, f, weights):
     """
     _, h, w, d = x.get_shape()
     #print('temporal loss: D = %f' % D)
-    K = (h * w * d)
+    K = (h.value * w.value * d.value)
     loss = tf.reduce_sum(weights * tf.square(x - f)) / K
     return loss
 
