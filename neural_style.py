@@ -645,6 +645,8 @@ class Model:
         pixel_age = self.pixel_age
         # Updates pixel age.
         for i in range(frame_start, frame):
+            if i == args.initial_frame:
+                continue
             # Warp content and pixel age
             flow = read_flow_frame(i)
             pixel_age_warped = optical_flow.warp_image(pixel_age, flow, interpolation=cv2.INTER_LINEAR)
