@@ -974,6 +974,21 @@ def get_flow_input_dir():
         return args.video_input_dir
 
 
+def read_flow_frame(frame):
+    """Load the backwards flow from frame index-1 to frame index"""
+    prev_frame = max(frame - 1, 0)
+    # backwards flow: current frame -> previous frame
+    invert_flow = 1
+    if args.backward_optical_flow_frmt:
+        fn = args.backward_optical_flow_frmt.format(frame, prev_frame)
+    elif args.forward_optical_flow_frmt:
+        fn = args.forward_optical_flow_frmt.format(frame, prev_frame)
+        invert_flow = -1
+    path = os.path.join(get_flow_input_dir(), fn)
+    flow = optical_flow.read_flow_file(path) * invert_flow
+    return flow
+
+
 def get_prev_warped_frame(frame, content_img):
     prev_img = get_prev_frame(frame)
     #print('content_img.shape: ' + str(content_img.shape))
