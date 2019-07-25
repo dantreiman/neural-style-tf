@@ -58,5 +58,5 @@ def warp_image(src, flow, interpolation=cv2.INTER_LANCZOS4):
     # remap pixels to optical flow
     dst = cv2.remap(
         src, flow_map[0], flow_map[1],
-        interpolation=interpolation, borderMode=cv2.BORDER_TRANSPARENT)
+        interpolation=interpolation, borderMode=cv2.BORDER_CONSTANT)
     return dst

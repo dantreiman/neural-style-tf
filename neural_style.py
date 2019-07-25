@@ -470,9 +470,9 @@ class Model:
         stem['style_input'] = tf.Variable(np.zeros((n_styles, h, w, d), dtype=np.float32), trainable=False)
         stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
 
-        stem['content_weights_in'] = tf.placeholder(tf.float32, shape=(h, w, 1))
+        stem['content_weights_in'] = tf.placeholder(tf.float32, shape=(h, w))
         stem['content_weights'] = tf.Variable(np.zeros((1, h, w, 1)), dtype=tf.float32, trainable=False)
-        stem['content_weights_assign'] = stem['content_weights'].assign(tf.expand_dims(stem['content_weights_in'], 0))
+        stem['content_weights_assign'] = stem['content_weights'].assign(tf.expand_dims(tf.expand_dims(stem['content_weights_in'], 0), 3))
 
         stem['global_step'] = tf.Variable(0, dtype=tf.int64, trainable=False)
         stem['reset_global_step'] = stem['global_step'].assign(0)
@@ -554,7 +554,7 @@ class Model:
         # self.debug_losses['tv'] = L_tv
 
         # video temporal loss
-        if args.video:
+        if args.video and args.depth_input_dir is not None:
             gamma  = args.temporal_weight
             L_z_temporal = self.setup_z_temporal_loss(content_frame)
             # self.debug_losses['temporal'] = L_temporal
@@ -621,17 +621,30 @@ class Model:
         return tf.reduce_mean(style_losses)
 
     def setup_z_temporal_loss(self, h, w):
-        self.pixel_age = np.zeros((h, w, 1), dtype=np.float32)
+        self.pixel_age = np.zeros((h, w, 1), dtype=np.uint8)
         self.pixel_age_frame = -1
         return temporal_loss(self.stem['input'], self.stem['prev_input'], self.stem['content_weights'])
 
     def update_z_temporal_loss(self, frame):
         frame_start = max(frame - args.depth_lookback, args.initial_frame, self.pixel_age_frame)
 
+        age_per_frame = 10
+        max_age = age_per_frame * args.depth_lookback
+        # Updates pixel age.
         for i in range(frame_start, frame):
-
+            # Warp content and pixel age
+            flow = load_flow_frame(i)
+            pixel_age_warped = optical_flow.warp_image(pixel_age, flow, interpolation=cv2.INTER_LINEAR)
+            # Increment pixel age
+            pixel_age_warped = pixel_age_warped + age_per_frame
+            # Mark revealed pixels as new
+            revealed = load_depth_mask(i, i-1)
+            pixel_age_warped[revealed] = 0
+            pixel_age = pixel_age_warped
         self.pixel_age_frame = frame
-
+        # Update content weights
+        content_weights = 1.0 - np.maximum(pixel_age, max_age).astype(np.float32) / max_age
+        self.sess.run(self.stem['content_weights_assign'], feed_dict={self.stem['content_weights_in']: content_weights})
 
 
     def setup_shortterm_temporal_loss(self):
@@ -680,7 +693,8 @@ class Model:
         """Do gradient descent, save style image"""
         self.update_content_loss(content_img)
         self.update_style_loss(style_imgs)
-        # self.update_shortterm_temporal_loss(frame)
+        if args.depth_input_dir:
+            self.update_z_temporal_loss(frame)
         stem = self.stem
         self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: init_img})
         if args.reset_optimizer:
