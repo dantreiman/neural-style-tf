@@ -568,7 +568,7 @@ class Model:
         # video temporal loss
         if args.video and args.depth_input_dir is not None:
             gamma  = args.temporal_weight
-            L_z_temporal = self.setup_z_temporal_loss(content_frame)
+            L_z_temporal = self.setup_z_temporal_loss(content_img)
             # self.debug_losses['temporal'] = L_temporal
             L_total += gamma * L_z_temporal
 
