@@ -623,8 +623,7 @@ class Model:
 
     def update_z_temporal_loss(self, frame, content_img):
         frame_start = max(frame - args.depth_lookback, args.initial_frame, self.pixel_age_frame)
-
-        age_per_frame = 10
+        age_per_frame = 4
         max_age = age_per_frame * args.depth_lookback
         pixel_age = self.pixel_age
         # Updates pixel age.
