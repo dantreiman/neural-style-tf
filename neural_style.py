@@ -642,7 +642,7 @@ class Model:
         self.pixel_age = pixel_age
         self.pixel_age_frame = frame
         # Update content weights
-        content_weights = 1.0 - (pixel_age.astype(np.float32) / max_age)
+        content_weights = 1.0 - np.sqrt(pixel_age.astype(np.float32) / max_age)
         self.sess.run(self.stem['content_weights_assign'], feed_dict={self.stem['content_weights_in']: content_weights})
         self.sess.run(self.stem['prev_input_assign'], feed_dict={self.stem['prev_input_in']: content_img})
 
