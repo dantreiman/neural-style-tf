@@ -1028,7 +1028,7 @@ def get_content_weights(frame, prev_frame):
 
 def get_depth_mask(frame, prev_frame):
     """Gets a binary mask image where 1 represents new pixels which were revealed by occlusion."""
-    max_Δz = .01  # max depth difference between adjacent pixels
+    max_Δz = .0025  # max depth difference between adjacent pixels
     prev_z_fn = args.depth_frame_frmt.format(str(prev_frame + args.depth_index_offset).zfill(args.depth_frame_digits))
     z_fn = args.depth_frame_frmt.format(str(frame + args.depth_index_offset).zfill(args.depth_frame_digits))
     prev_z_path = os.path.join(args.depth_input_dir, prev_z_fn)
@@ -1036,7 +1036,9 @@ def get_depth_mask(frame, prev_frame):
     prev_z = exr.load_depth_file(prev_z_path)[:,:,0]  # Are all channels in the depth image the same?  IDK.
     z = exr.load_depth_file(z_path)[:,:,0]
     # Note: higher values = longer distance from the camera
-    return (z - prev_z) > max_Δz
+    revealed = (z - prev_z) > max_Δz
+    obscured = (prev_z - z) > max_Δz
+    return np.logical_or([revealed, obscured])
 
 
 def convert_to_original_colors(content_img, stylized_img):
