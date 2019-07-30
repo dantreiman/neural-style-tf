@@ -12,7 +12,7 @@ def weighted_content_loss(x, f, weights):
       weights (tf.Tensor) The content weights.
     """
     #print('temporal loss: D = %f' % D)
-    loss = tf.reduce_sum(weights * tf.square(x - f)) / tf.reduce_sum(weights)
+    loss = tf.reduce_sum(weights * tf.square(x - f)) / (tf.reduce_sum(weights) + 1.0)
     return loss
 
 
