@@ -1038,7 +1038,7 @@ def get_depth_mask(frame, prev_frame):
     # Note: higher values = longer distance from the camera
     revealed = (z - prev_z) > max_Δz
     obscured = (prev_z - z) > max_Δz
-    return np.logical_or([revealed, obscured])
+    return np.logical_or(revealed, obscured)
 
 
 def convert_to_original_colors(content_img, stylized_img):
