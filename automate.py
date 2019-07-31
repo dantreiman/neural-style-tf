@@ -84,8 +84,8 @@ def get_param(name):
     return matches[0][1] if matches else None
 
 
-content_frame_frmt = get_param('content_frame_frmt')
-content_frame_digits = get_param('content_frame_digits')
+content_frame_frmt = get_param('--content_frame_frmt')
+content_frame_digits = get_param('--content_frame_digits')
 
 # ---------------------------------------- Initialization ----------------------------------------
 
