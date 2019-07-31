@@ -149,7 +149,7 @@ for i, c in enumerate(commands):
 
     qsub_command = [
         QSUB,
-        '--terse'
+        '--terse',
         '-b', 'y',
         '-q', RENDER_QUEUE,
         '-v', 'LD_LIBRARY_PATH=/home/ubuntu/src/cntk/bindings/python/cntk/libs:/usr/local/cuda/lib64:/usr/local/lib:/usr/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/mpi/lib:',
