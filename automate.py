@@ -76,7 +76,7 @@ log_file.write('params = %s\n' % repr(params))
 
 # Build list of runnable commands
 commands = [
-    ['/usr/bin/python3', os.path.join(style_transfer_script, 'neural_style.py')]
+    ['/usr/bin/python3', os.path.join(style_transfer_script_dir, 'neural_style.py')]
 ]
 for name, value in params:
     if isinstance(value, list):
