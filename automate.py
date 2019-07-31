@@ -145,7 +145,7 @@ for param in params:
 for i, c in enumerate(commands):
     output_index = i + output_index_start
     output_dir = os.path.join(image_series_dir, '%s_styled_%d' % (output_prefix, output_index))
-    c.extend(['--output_dir', output_dir])
+    c.extend(['--video_output_dir', output_dir])
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 
