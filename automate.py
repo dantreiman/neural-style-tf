@@ -144,8 +144,10 @@ for param in params:
 # Add image series / output dir to command
 for i, c in enumerate(commands):
     output_index = i + output_index_start
-    output_dir = os.path.join(image_series_dir, 'image_series_%d' % output_index)
+    output_dir = os.path.join(image_series_dir, '%s_styled_%d' % (output_prefix, output_index))
     c.extend(['--output_dir', output_dir])
+    if not os.path.isdir(output_dir):
+        os.mkdir(output_dir)
 
     qsub_command = [
         QSUB,
