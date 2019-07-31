@@ -76,7 +76,7 @@ params = [
 log_path = os.path.join(final_render_dir, 'render_log.txt')
 print('Logging output to %s' % log_path)
 
-job_log_path = os.path.join(final_render_dir, '/logs')
+job_log_path = os.path.join(final_render_dir, 'logs')
 
 
 def get_param(name):
