@@ -1,19 +1,39 @@
 import os
-from queue import Queue
 import subprocess
 import threading
 
+# ---------------------------------------- System Settings ----------------------------------------
+
+FFMPEG = 'usr/bin/ffmpeg'
+
+PIP3 = '/usr/local/bin/pip3'
+
+PYTHON3 = '/usr/bin/python3'
+
+QSUB = '/opt/sge6/bin/linux-x64/qsub'
+
+# SGE queue to run style transfer on
+RENDER_QUEUE = 'gpu.q'
+
+# SGE queue to encode movies on
+ENCODE_QUEUE = 'cpu.q'
+
+# ---------------------------------------- Configurable Settings ----------------------------------------
+
 # Directory to store rendered image series.  Will be created if does not already exist.
-image_series_dir = '/tmp'
+image_series_dir = '/s3fs/tmp/leigh_woods/s06'
 
 # Directory to render final output to
-final_render_dir = '/data/synced_outputs/leigh_woods/s06_tests'
+final_render_dir = '/data/synced_outputs/leigh_woods/s06'
+
+# Prefix to append to filenames of rendered movies
+output_prefix = 's06'
 
 # Path to the version of neural_style.py
 style_transfer_script_dir = '/data/home/dan.treiman/neural-style-z'
 
-# Number of GPUs to use
-n_gpus = 4
+# Start index to use to label output files
+output_index_start = 0
 
 # List of params to pass to the style transfer function.  Params take the form of tuples, where the first element is the
 # argument, the second is the value.  If the value is a list, then the script is run once for each element of the list.
@@ -25,6 +45,33 @@ params = [
     ('--content_weight', [50, 500, 1000]),
     ('--tv_weight', [1, 0.1]),
 ]
+
+
+# ---------------------------------------- Derived Settings ----------------------------------------
+
+
+log_path = os.path.join(final_render_dir, 'render_log.txt')
+
+
+# ---------------------------------------- Initialization ----------------------------------------
+
+# Check if output directories exist, create if necessary
+if not os.path.isdir(image_series_dir):
+    os.mkdir(image_series_dir)
+
+if not os.path.isdir(final_render_dir):
+    os.mkdir(final_render_dir)
+
+# Open log file
+log_file = open(log_path, 'w+')
+
+# Log settings to log file
+log_file.write('image_series_dir = \'%s\'\n' % image_series_dir)
+log_file.write('final_render_dir = \'%s\'\n' % final_render_dir)
+log_file.write('output_prefix = \'%s\'\n' % output_prefix)
+log_file.write('style_transfer_script_dir = \'%s\'\n' % style_transfer_script_dir)
+log_file.write('output_index_start = %d\n' % output_index_start)
+log_file.write('params = %s\n' % repr(params))
 
 
 # Build list of runnable commands
@@ -55,32 +102,23 @@ for i, c in enumerate(commands):
     print('%d: %s' % (i, c))
 
 
-# Create queue to ensure we only run one process or each GPU.
-gpu_queue = Queue()
-for i in range(n_gpus):
-    gpu_queue.put(i)
-
-
 # Launch commands in sub-processes, assigning each to an available GPU.
 for i, command in enumerate(commands):
-    output_dir = os.path.join(image_series_dir, 'image_series_%d' % i)
-    movie_path = os.path.join(final_render_dir, '%d.mp4' % i)
-    gpu = gpu_queue.get()
-    process = subprocess.Popen(
-        command,
-        cwd = style_transfer_script_dir,
-        env = {
-            'LD_LIBRARY_PATH': '',
-            'CUDA_DEVICE_ORDER': 'PCI_BUS_ID',
-            'CUDA_VISIBLE_DEVICES': str(gpu)
-        }
-    )
-    def process_thread_body():
-        """Returns gpu to available GPU queue after subprocess completes"""
-        process.wait()
-        gpu_queue.put(gpu)
-        # Run FFMPEG command over image series to render final
-        ffmpeg_command = ['/usr/bin/ffmpeg', movie_path]
+    output_index = i + output_index_start
+    output_dir = os.path.join(image_series_dir, '%s_%d' % (output_prefix, output_index))
+    movie_path = os.path.join(final_render_dir, '%s_%d.mp4' % (output_prefix, output_index))
+    #process = subprocess.Popen(
+    #    command,
+    #    cwd = style_transfer_script_dir,
+    #    env = {
+    #        'LD_LIBRARY_PATH': '',
+    # #        'CUDA_DEVICE_ORDER': 'PCI_BUS_ID',
+    #         'CUDA_VISIBLE_DEVICES': str(gpu)
+    #     }
+    # )
+    # # Run FFMPEG command over image series to render final
+    # ffmpeg_command = ['/usr/bin/ffmpeg', movie_path]
 
-    process_thread = threading.Thread(process_thread_body)
-    process_thread.start()
+
+
+log_file.close()
