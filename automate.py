@@ -155,7 +155,7 @@ for i, c in enumerate(commands):
         '-o', os.path.join(job_log_path, '%s_%d_render.stdout' % (output_prefix, output_index)),
         '-e', os.path.join(job_log_path, '%s_%d_render.stderr' % (output_prefix, output_index))
     ]
-    qsub_command.extend(c)
+    qsub_command.extend([str(a) for a in c])
 
     log_file.write('\n%d render\n' % output_index)
     log_file.write(' '.join(qsub_command))
