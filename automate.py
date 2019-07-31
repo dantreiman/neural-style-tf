@@ -39,7 +39,7 @@ params = [
     ('--model_weights', '/s3fs/models/VGG19/imagenet-vgg-verydeep-19.mat'),
     ('--video',),
     ('--backward_optical_flow_frmt', 'backward_{}_{}.flo'),
-    ('--verbose'),
+    ('--verbose',),
     ('--print_iterations', 50),
     ('--init_frame_type', 'prev_warped'),
 
