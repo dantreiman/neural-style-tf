@@ -4,7 +4,7 @@ import subprocess
 
 # ---------------------------------------- System Settings ----------------------------------------
 
-FFMPEG = 'usr/bin/ffmpeg'
+FFMPEG = '/usr/bin/ffmpeg'
 
 PYTHON3 = '/usr/bin/python3'
 
