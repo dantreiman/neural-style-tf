@@ -184,6 +184,10 @@ def parse_args():
                         default=1e0,
                         help='Learning rate parameter for the Adam optimizer. (default: %(default)s)')
 
+    parser.add_argument('--epsilon', type=float,
+                        default=1e-08,
+                        help='A small constant for numerical stability for ADAM optimizer. (default: %(default)s)')
+
     parser.add_argument('--max_iterations', type=int,
                         default=1000,
                         help='Max number of iterations for the Adam or L-BFGS optimizer. (default: %(default)s)')
@@ -791,7 +795,7 @@ class Model:
                 options={'maxiter': self.max_bfgs_iterations,
                          'disp': print_iterations})
         if args.optimizer in ('adam', 'mixed'):
-            self.tf_optimizer = tf.train.AdamOptimizer(learning_rate)
+            self.tf_optimizer = tf.train.AdamOptimizer(learning_rate, epsilon=args.epsilon)
         if args.optimizer == 'gd':
             self.tf_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
         if args.optimizer == 'adagrad':
