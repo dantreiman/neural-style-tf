@@ -662,7 +662,7 @@ class Model:
     def setup_content_loss(self):
         stem = self.stem
         content_losses = []
-        for o, (net, content_net) in enumerate(zip(self.nets, self.content_net)):
+        for o, (net, content_net) in enumerate(zip(self.nets, self.content_nets)):
             octave_weight = content_weight_for_octave(o)
             for layer_name, weight in zip(args.content_layers, args.content_layer_weights):
                 a = content_net[layer_name]
