@@ -350,17 +350,17 @@ def read_image(path):
 
 def write_image_with_retries(path, img, retries=0, max_retries=2):
     if retries > max_retries:
-        print('Error: failed')
+        print('Error: failed', flush=True)
         raise OSError(errno.ENOENT, "Failed to write image to path: ", path)
         return
     cv2.imwrite(path, img)
     # Verify the image
     if not os.path.isfile(path):
-        print('Warning: failed to write to %s, retrying' % path)
+        print('Warning: failed to write to %s, retrying' % path, flush=True)
         return write_image_with_retries(path, img, retries + 1, max_retries)
     img_copy = cv2.imread(path, cv2.IMREAD_COLOR)
     if img_copy is None:
-        print('Warning: image written to %s not readable, retrying' % path)
+        print('Warning: image written to %s not readable, retrying' % path, flush=True)
         os.remove(path)
         return write_image_with_retries(path, img, retries + 1, max_retries)
 
@@ -480,10 +480,10 @@ class Model:
 
         transforms = []
         if args.transforms == 'standard':
-            print('Using standard transforms.')
+            print('Using standard transforms.', flush=True)
             transforms = transform.standard_transforms
         elif args.transforms == 'translate':
-            print('Using translate transform only.')
+            print('Using translate transform only.', flush=True)
             transforms = transform.translate_only
         input_transformed_t = stem['input']
         content_input_transformed_t = stem['content_input']
@@ -709,7 +709,7 @@ class Model:
             write_image_output(output_img, content_img, style_imgs, init_img)
 
     def minimize_with_lbfgs(self):
-        if args.verbose: print('\nMINIMIZING LOSS USING: L-BFGS OPTIMIZER')
+        if args.verbose: print('\nMINIMIZING LOSS USING: L-BFGS OPTIMIZER', flush=True)
         self.sc_optimizer.minimize(self.sess)
 
     def should_stop_early(self, loss_history):
@@ -722,7 +722,7 @@ class Model:
         return pct_change > -0.01 and pct_change < 0
 
     def minimize_with_adam(self, loss):
-        if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER')
+        if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER', flush=True)
         iterations = 0
         loss_history = []
         while (iterations < self.max_tf_iterations):
@@ -733,43 +733,43 @@ class Model:
             #    print('%s: %.5f' % (k, self.sess.run(v)))
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
-                print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr))
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr), flush=True)
             if args.early_stopping and self.should_stop_early(loss_history):
-                print('Stopping early')
+                print('Stopping early', flush=True)
                 return
             iterations += 1
 
     def minimize_with_gd(self, loss):
-        if args.verbose: print('\nMINIMIZING LOSS USING: GRADIENT DESCENT OPTIMIZER')
+        if args.verbose: print('\nMINIMIZING LOSS USING: GRADIENT DESCENT OPTIMIZER', flush=True)
         iterations = 0
         while (iterations < self.max_tf_iterations):
             self.sess.run(self.train_op)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
-                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr), flush=True)
             iterations += 1
 
     def minimize_with_adagrad(self, loss):
-        if args.verbose: print('\nMINIMIZING LOSS USING: ADAGRAD OPTIMIZER')
+        if args.verbose: print('\nMINIMIZING LOSS USING: ADAGRAD OPTIMIZER', flush=True)
         iterations = 0
         while (iterations < self.max_tf_iterations):
             self.sess.run(self.train_op)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
-                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr), flush=True)
             iterations += 1
 
     def minimize_with_nesterov(self, loss):
-        if args.verbose: print('\nMINIMIZING LOSS USING: NESTEROV MOMENTUM')
+        if args.verbose: print('\nMINIMIZING LOSS USING: NESTEROV MOMENTUM', flush=True)
         iterations = 0
         while (iterations < self.max_tf_iterations):
             self.sess.run(self.train_op)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
-                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr), flush=True)
             iterations += 1
 
     def setup_optimizer(self, loss):
@@ -875,7 +875,7 @@ def get_content_image(content_img_path):
     img = img.astype(np.float32)
     scale_f = args.superpixel_scale
     if scale_f > 1.0:
-        print('Scaling image up by %f' % scale_f)
+        print('Scaling image up by %f' % scale_f, flush=True)
         img = cv2.resize(img, (int(scale_f * img.shape[1]), int(scale_f * img.shape[0])), interpolation=cv2.INTER_CUBIC)
     h, w, d = img.shape
     mx = args.max_size
@@ -983,7 +983,7 @@ def get_prev_warped_frame(frame, content_img):
     flow = optical_flow.read_flow_file(path) * invert_flow
     scale_f = args.superpixel_scale
     if scale_f > 1.0:
-        print('Scaling optical flow up by %f' % scale_f)
+        print('Scaling optical flow up by %f' % scale_f, flush=True)
         flow = optical_flow.resize_flow(flow, prev_img.shape[1], prev_img.shape[0])
         flow = flow * scale_f  # Multiplies displacement vectors by scale factor.
     # Filter flow by thresholding on content image value.
@@ -1087,7 +1087,7 @@ def render_video():
                                     args.content_frame_frmt.format(str(args.start_frame - 1).zfill(args.content_frame_digits)))
     assume_resume = os.path.isfile(prior_frame_path)
     for frame in range(args.start_frame, args.end_frame + 1):
-        print('\n---- RENDERING VIDEO FRAME: {}/{} ----\n'.format(frame, args.end_frame))
+        print('\n---- RENDERING VIDEO FRAME: {}/{} ----\n'.format(frame, args.end_frame), flush=True)
         if not assume_resume and frame == args.start_frame:
             content_frame = get_content_frame(frame)
             style_imgs = get_style_images_for_frame(content_frame, frame)
@@ -1099,7 +1099,7 @@ def render_video():
                 needs_load = False
             model.stylize(content_frame, style_imgs, init_img, frame)
             tock = time.time()
-            print('Frame {} elapsed time: {}'.format(frame, tock - tick))
+            print('Frame {} elapsed time: {}'.format(frame, tock - tick), flush=True)
         else:
             content_frame = get_content_frame(frame)
             style_imgs = get_style_images_for_frame(content_frame, frame)
@@ -1111,7 +1111,7 @@ def render_video():
                 needs_load = False
             model.stylize(content_frame, style_imgs, init_img, frame)
             tock = time.time()
-            print('Frame {} elapsed time: {}'.format(frame, tock - tick))
+            print('Frame {} elapsed time: {}'.format(frame, tock - tick), flush=True)
 
 
 def main():
