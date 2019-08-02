@@ -22,7 +22,7 @@ def content_layer_loss(p, x, content_loss_function=1):
     M = tf.cast(h * w, tf.float32)
     N = tf.cast(d, tf.float32)
     if content_loss_function == 1:
-        K = 2. * N ** 0.5 * M ** 0.5
+        K = 2. * tf.sqrt(N) * tf.sqrt(M)
     elif content_loss_function == 2:
         K = N * M
     elif content_loss_function == 3:
@@ -38,7 +38,7 @@ def style_layer_loss(a, x):
     N = d
     A = gram_matrix(a, M, N)
     G = gram_matrix(x, M, N)
-    K = tf.cast(4 * N ** 2 * M ** 2, tf.float32)
+    K = 4. * tf.square(tf.cast(N, tf.float32)) * tf.square(tf.cast(M, tf.float32))
     loss = (1. / K) * tf.reduce_sum(tf.square(G - A))
     return loss
 
