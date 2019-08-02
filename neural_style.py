@@ -711,6 +711,10 @@ class Model:
         else:
             write_image_output(output_img, content_img, style_imgs, init_img)
 
+    def print_debug_loss(self):
+        for k, v in self.debug_losses.items():
+            print('%s: %.5f' % (k, self.sess.run(v)))
+
     def minimize_with_lbfgs(self):
         if args.verbose: print('\nMINIMIZING LOSS USING: L-BFGS OPTIMIZER', flush=True)
         self.sc_optimizer.minimize(self.sess)
@@ -726,14 +730,14 @@ class Model:
 
     def minimize_with_adam(self, loss):
         if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER', flush=True)
+        if args.debug_loss: self.print_debug_loss()
         iterations = 0
         loss_history = []
         while (iterations < self.max_tf_iterations):
             _, l = self.sess.run([self.train_op, loss])
             loss_history.append(l)
             if iterations % args.print_iterations == 0 and args.debug_loss:
-                for k,v in self.debug_losses.items():
-                    print('%s: %.5f' % (k, self.sess.run(v)))
+                self.print_debug_loss()
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr), flush=True)
