@@ -495,10 +495,10 @@ class Model:
         t_transformed = stem['input']
         for t in transforms:
             t_transformed = t(t_transformed)
-        stem['input_transformed'] = t_transformed
+        stem['input_transformed'] = tf.stack[stem['input'], t_transformed] if len(transforms) > 0 else t_transformed
         self.stem = stem
 
-        net, reuse_vars = vgg19.build_network(t_transformed, args.model_weights)
+        net, reuse_vars = vgg19.build_network(stem['input_transformed'], args.model_weights)
         style_net, _ = vgg19.build_network(stem['style_input'], args.model_weights, reuse_vars=reuse_vars)
         self.nets.append(net)
         self.style_nets.append(style_net)
@@ -510,7 +510,7 @@ class Model:
         elif args.downsample_method == 'resize':
             downsample = pyramid.bilinear
 
-        o = t_transformed
+        o = stem['input_transformed']
         s = stem['style_input']
         for i in range(args.octaves - 1):
             o = downsample(o)
