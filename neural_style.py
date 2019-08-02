@@ -490,20 +490,14 @@ class Model:
         elif args.transforms == 'translate':
             print('Using translate transform only.', flush=True)
             transforms = transform.translate_only
-        input_transformed_t = stem['input']
-        content_input_transformed_t = stem['content_input']
-        prev_input_transformed_t = stem['prev_input']
-        style_input_transformed_t = stem['style_input']
+        # Join inputs together, to transform them all the same.
+        input_transformed_t = tf.concat([stem['input'], stem['content_input'], stem['prev_input'], stem['style_input']], axis=0)
         for t in transforms:
             input_transformed_t = t(input_transformed_t)
-            content_input_transformed_t = t(content_input_transformed_t)
-            prev_input_transformed_t = t(prev_input_transformed_t)
-            style_input_transformed_t = t(style_input_transformed_t)
-        #stem['input_transformed'] = tf.concat([stem['input'], t_transformed], axis=0) if len(transforms) > 0 else t_transformed
-        stem['input_transformed'] = input_transformed_t
-        stem['content_input_transformed'] = content_input_transformed_t
-        stem['prev_input_transformed'] = prev_input_transformed_t
-        stem['style_input_transformed'] = style_input_transformed_t
+        stem['input_transformed'] = input_transformed_t[:1]
+        stem['content_input_transformed'] = input_transformed_t[1:2]
+        stem['prev_input_transformed'] = input_transformed_t[2:3]
+        stem['style_input_transformed'] = input_transformed_t[3:]  # Note: there might be multiple style images
         self.stem = stem
 
         net, reuse_vars = vgg19.build_network(stem['input_transformed'], args.model_weights)
