@@ -184,7 +184,7 @@ def parse_args():
 
     parser.add_argument('--transforms', type=str,
                         default='none',
-                        choices=['none', 'translate', 'standard'],
+                        choices=['none', 'translate', 'standard', 'warp'],
                         help='Applies random jitter or rotation to image to smooth out neural network artifacts. (default|recommended: %(default)s)')
 
     parser.add_argument('--learning_rate', type=float,
@@ -492,6 +492,9 @@ class Model:
         elif args.transforms == 'translate':
             print('Using translate transform only.', flush=True)
             transforms = transform.translate_only
+        elif args.transforms == 'warp':
+            print('Using smooth warp transformation.', flush=True)
+            transforms = [transform.random_warp(3, 4, h, w, 64)]
         # Join inputs together, to transform them all the same.
         transform_inputs = [stem['input'], stem['content_input'], stem['prev_input']]
         if transforms_resize_style:
