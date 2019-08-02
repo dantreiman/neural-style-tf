@@ -498,7 +498,7 @@ class Model:
         stem['input_transformed'] = input_transformed_t
         stem['content_input_transformed'] = input_transformed_t
         stem['prev_input_transformed'] = prev_input_transformed_t
-        stem['style_input_transformed_t'] = style_input_transformed_t
+        stem['style_input_transformed'] = style_input_transformed_t
         self.stem = stem
 
         net, reuse_vars = vgg19.build_network(stem['input_transformed'], args.model_weights)
