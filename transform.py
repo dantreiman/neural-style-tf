@@ -104,7 +104,7 @@ def random_warp(ny, nx, h, w, random_scale=64, seed=None):
         source_points_t = tf.constant(source_points, dtype=tf.float32)
         dest_points_t = source_points_t + tf.random_normal(source_points.shape, seed=seed) * random_scale
         n = tf.shape(t)[0]
-        warped_image_t = tf.contrib.image.sparse_image_warp(
+        warped_image_t, field_t = tf.contrib.image.sparse_image_warp(
             t,
             tf.tile(tf.expand_dims(source_points_t, 0), [n, 1, 1]),
             tf.tile(tf.expand_dims(dest_points_t, 0), [n, 1, 1]),
