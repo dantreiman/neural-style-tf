@@ -22,6 +22,9 @@ def parse_args():
     parser.add_argument('--verbose', action='store_true',
                         help='Boolean flag indicating if statements should be printed to the console.')
 
+    parser.add_argument('--debug_loss', action='store_true',
+                        help='Boolean flag indicating if loss components should be printed.')
+
     parser.add_argument('--img_name', type=str,
                         default='result',
                         help='Filename of the output image.')
@@ -558,15 +561,15 @@ class Model:
         L_total += beta * L_style
         L_total += theta * L_tv
 
-        # self.debug_losses['content'] = L_content
-        # self.debug_losses['style'] = L_style
-        # self.debug_losses['tv'] = L_tv
+        self.debug_losses['content'] = L_content
+        self.debug_losses['style'] = L_style
+        self.debug_losses['tv'] = L_tv
 
         # video temporal loss
         if args.video and args.depth_input_dir is not None:
             gamma  = args.temporal_weight
             L_z_temporal = self.setup_z_temporal_loss(content_img.shape[1], content_img.shape[2])
-            # self.debug_losses['temporal'] = L_temporal
+            self.debug_losses['z_temporal'] = L_z_temporal
             L_total += gamma * L_z_temporal
 
         # optimization algorithm
@@ -728,9 +731,9 @@ class Model:
         while (iterations < self.max_tf_iterations):
             _, l = self.sess.run([self.train_op, loss])
             loss_history.append(l)
-            # if iterations % args.print_iterations == 0:
-            #  for k,v in self.debug_losses.items():
-            #    print('%s: %.5f' % (k, self.sess.run(v)))
+            if iterations % args.print_iterations == 0 and args.debug_loss:
+                for k,v in self.debug_losses.items():
+                    print('%s: %.5f' % (k, self.sess.run(v)))
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
                 print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr), flush=True)
