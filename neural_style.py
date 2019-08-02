@@ -484,20 +484,25 @@ class Model:
             stem['learning_rate'] = tf.constant(args.learning_rate)
 
         transforms = []
+        transforms_resize_style = False
         if args.transforms == 'standard':
             print('Using standard transforms.', flush=True)
             transforms = transform.standard_transforms
+            transforms_resize_style = True
         elif args.transforms == 'translate':
             print('Using translate transform only.', flush=True)
             transforms = transform.translate_only
         # Join inputs together, to transform them all the same.
-        input_transformed_t = tf.concat([stem['input'], stem['content_input'], stem['prev_input'], stem['style_input']], axis=0)
+        transform_inputs = [stem['input'], stem['content_input'], stem['prev_input']]
+        if transforms_resize_style:
+            transform_inputs.append(stem['style_input'])
+        input_transformed_t = tf.concat(transform_inputs, axis=0)
         for t in transforms:
             input_transformed_t = t(input_transformed_t)
         stem['input_transformed'] = input_transformed_t[:1]
         stem['content_input_transformed'] = input_transformed_t[1:2]
         stem['prev_input_transformed'] = input_transformed_t[2:3]
-        stem['style_input_transformed'] = input_transformed_t[3:]  # Note: there might be multiple style images
+        stem['style_input_transformed'] = input_transformed_t[3:] if transforms_resize_style else stem['style_input']  # Note: there might be multiple style images
         self.stem = stem
 
         with tf.device('/device:GPU:0'):
