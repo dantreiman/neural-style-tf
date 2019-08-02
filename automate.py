@@ -28,7 +28,7 @@ final_render_dir = '/data/synced_outputs/leigh_woods/s06'
 output_prefix = 's06'
 
 # Path to the version of neural_style.py
-style_transfer_script_dir = '/data/home/dan.treiman/neural-style-z'
+style_transfer_script_dir = '/data/home/dan.treiman/neural-style-tf'
 
 # Start index to use to label output files
 output_index_start = 0
