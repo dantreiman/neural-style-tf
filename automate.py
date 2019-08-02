@@ -160,12 +160,12 @@ for i, c in enumerate(commands):
     ]
     qsub_command.extend([str(a) for a in c])
 
-    log_file.write('\n%d render\n' % output_index)
-    log_file.write(' '.join(qsub_command))
-    log_file.write('\n')
-
     jid_string = subprocess.check_output(qsub_command)
     jid = int(jid_string)
+
+    log_file.write('\n%d render (job %d)\n' % (output_index, jid))
+    log_file.write(' '.join(qsub_command))
+    log_file.write('\n')
 
     movie_path = os.path.join(final_render_dir, '%s_%d.mp4' % (output_prefix, output_index))
     encode_qsub_command = [
@@ -189,10 +189,11 @@ for i, c in enumerate(commands):
         movie_path
     ]
 
-    log_file.write('\n%d encode\n' % output_index)
+    encode_jid_string = subprocess.check_output(encode_qsub_command)
+    encode_jid = int(encode_jid_string)
+    log_file.write('\n%d encode (job %d)\n' % (output_index, encode_jid))
     log_file.write(' '.join(encode_qsub_command))
     log_file.write('\n\n')
-    subprocess.call(encode_qsub_command)
 
 
 log_file.close()
