@@ -538,18 +538,19 @@ class Model:
         # setup network
         stem, nets, content_nets, style_nets = self.build_network(content_img, n_styles=len(style_imgs))
         # style loss
-        if args.style_mask:
-            L_style = self.sum_masked_style_losses()
-        elif args.correlate_octaves:
-            L_style = self.sum_style_losses_correlate_octaves()
-        else:
-            L_style = self.sum_style_losses()
+        with tf.device('/device:GPU:1'):
+            if args.style_mask:
+                L_style = self.sum_masked_style_losses()
+            elif args.correlate_octaves:
+                L_style = self.sum_style_losses_correlate_octaves()
+            else:
+                L_style = self.sum_style_losses()
 
-        # content loss
-        L_content = self.setup_content_loss()
-
-        # denoising loss
-        L_tv = tf.image.total_variation(stem['input'])
+        with tf.device('/device:GPU:0'):
+            # content loss
+            L_content = self.setup_content_loss()
+            # denoising loss
+            L_tv = tf.image.total_variation(stem['input'])
 
         # loss weights
         alpha = args.content_weight
