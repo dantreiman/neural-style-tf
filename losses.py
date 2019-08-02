@@ -18,8 +18,8 @@ def weighted_content_loss(x, f, weights):
 
 def content_layer_loss(p, x, content_loss_function=1):
     _, h, w, d = tf.unstack(tf.shape(p))
-    M = h * w
-    N = d
+    M = tf.cast(h * w, tf.float32)
+    N = tf.cast(d, tf.float32)
     if content_loss_function == 1:
         K = 1. / (2. * N ** 0.5 * M ** 0.5)
     elif content_loss_function == 2:
@@ -36,7 +36,7 @@ def style_layer_loss(a, x):
     N = d
     A = gram_matrix(a, M, N)
     G = gram_matrix(x, M, N)
-    loss = (1. / (4 * N ** 2 * M ** 2)) * tf.reduce_sum(tf.square(G - A))
+    loss = (1. / tf.cast(4 * N ** 2 * M ** 2, tf.float32)) * tf.reduce_sum(tf.square(G - A))
     return loss
 
 
