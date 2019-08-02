@@ -422,6 +422,8 @@ class Model:
             self.style_nets = [] # The style image networks for each layer of the pyramid.
             self.content_weights = None
             self.pixel_age_frame = -1  # The frame index that we computed pixel age for last.
+            self.age_per_frame = 4  # The amount to advance the 'age' of each pixel per frame.
+            self.max_age = self.age_per_frame * args.depth_lookback  # The maximum pixel age.
             self.pixel_age = None  # The 'age' of each pixel, in frames.
             self.loss = None
             self.debug_losses = {}
@@ -634,14 +636,12 @@ class Model:
         return tf.reduce_mean(style_losses)
 
     def setup_z_temporal_loss(self, h, w):
-        self.pixel_age = np.zeros((h, w), dtype=np.uint8)
+        self.pixel_age = np.ones((h, w), dtype=np.uint8) * self.max_age
         self.pixel_age_frame = -1
         return losses.weighted_content_loss(self.stem['input'], self.stem['prev_input'], self.stem['temporal_weights'])
 
     def update_z_temporal_loss(self, frame, content_img):
         frame_start = max(frame - args.depth_lookback, args.initial_frame, self.pixel_age_frame)
-        age_per_frame = 4
-        max_age = age_per_frame * args.depth_lookback
         pixel_age = self.pixel_age
         # Updates pixel age.
         for i in range(frame_start, frame):
@@ -651,15 +651,15 @@ class Model:
             flow = read_flow_frame(i)
             pixel_age_warped = optical_flow.warp_image(pixel_age, flow, interpolation=cv2.INTER_LINEAR)
             # Increment pixel age
-            pixel_age_warped = pixel_age_warped + age_per_frame
+            pixel_age_warped = pixel_age_warped + self.age_per_frame
             # Mark revealed pixels as new
             revealed = get_depth_mask(i, i - 1)
             pixel_age_warped[revealed] = 0
-            pixel_age = np.maximum(pixel_age_warped, max_age)
+            pixel_age = np.maximum(pixel_age_warped, self.max_age)
         self.pixel_age = pixel_age
         self.pixel_age_frame = frame
         # Update content weights
-        temporal_weights = 1.0 - np.sqrt(pixel_age.astype(np.float32) / max_age)
+        temporal_weights = 1.0 - np.sqrt(pixel_age.astype(np.float32) / self.max_age)
         self.sess.run(self.stem['temporal_weights_assign'], feed_dict={self.stem['temporal_weights_in']: temporal_weights})
         self.sess.run(self.stem['prev_input_assign'], feed_dict={self.stem['prev_input_in']: content_img})
 
