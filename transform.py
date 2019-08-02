@@ -91,16 +91,18 @@ def random_scale(scales, seed=None):
     return inner
 
 
+RANDOM_SEED = 47
+
 standard_transforms = [
     pad(12, mode="constant", constant_value=.5),
-    jitter(8),
-    random_scale([1 + (i - 5) / 50. for i in range(11)]),
-    random_rotate(list(range(-10, 11)) + 5 * [0]),
-    jitter(4),
+    jitter(8, seed=RANDOM_SEED),
+    random_scale([1 + (i - 5) / 50. for i in range(11)], seed=RANDOM_SEED),
+    random_rotate(list(range(-10, 11)) + 5 * [0], seed=RANDOM_SEED),
+    jitter(4, seed=RANDOM_SEED),
 ]
 
 
 translate_only = [
-    pad(4),
-    jitter(8)
+    pad(4, seed=RANDOM_SEED),
+    jitter(8, seed=RANDOM_SEED)
 ]
