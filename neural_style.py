@@ -577,7 +577,7 @@ class Model:
         self.loss = L_total
         self.setup_optimizer(self.loss)
         if args.optimizer in ('adam', 'mixed', 'gd', 'adagrad', 'nesterov'):
-            self.train_op = self.tf_optimizer.minimize(self.loss, global_step=stem['global_step'])
+            self.train_op = self.tf_optimizer.minimize(self.loss, global_step=stem['global_step'], colocate_gradients_with_ops=True)
             self.reset_optimizer_op = tf.variables_initializer(self.tf_optimizer.variables())
         self.sess.run(tf.global_variables_initializer())
 
