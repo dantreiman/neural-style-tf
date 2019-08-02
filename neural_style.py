@@ -499,7 +499,7 @@ class Model:
             style_input_transformed_t = t(style_input_transformed_t)
         #stem['input_transformed'] = tf.concat([stem['input'], t_transformed], axis=0) if len(transforms) > 0 else t_transformed
         stem['input_transformed'] = input_transformed_t
-        stem['content_input_transformed'] = input_transformed_t
+        stem['content_input_transformed'] = content_input_transformed_t
         stem['prev_input_transformed'] = prev_input_transformed_t
         stem['style_input_transformed'] = style_input_transformed_t
         self.stem = stem
