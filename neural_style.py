@@ -623,7 +623,8 @@ class Model:
                 for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
                     a = style_net[layer][i:i + 1]  # The activations of layer for the ith style image
                     x = net[layer]
-                    n, h, w, c = tf.unstack(tf.shape(a))
+                    a_shape = tf.shape(a)
+                    n, h, w, c = (a_shape[0], a_shape[1], a_shape[2], a_shape[3])
                     octave_weight = style_weight_for_octave(o)
                     a_o.append(tf.reshape(a, [n, 1, h*w, c]) * octave_weight)
                     x_o.append(tf.reshape(x, [n, 1, h*w, c]) * octave_weight)
