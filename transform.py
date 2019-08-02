@@ -103,6 +103,6 @@ standard_transforms = [
 
 
 translate_only = [
-    pad(4, seed=RANDOM_SEED),
+    pad(4),
     jitter(8, seed=RANDOM_SEED)
 ]
