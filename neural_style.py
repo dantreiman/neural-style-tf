@@ -500,9 +500,11 @@ class Model:
         stem['style_input_transformed'] = input_transformed_t[3:]  # Note: there might be multiple style images
         self.stem = stem
 
-        net, reuse_vars = vgg19.build_network(stem['input_transformed'], args.model_weights)
-        content_net, _ = vgg19.build_network(stem['content_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
-        style_net, _ = vgg19.build_network(stem['style_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
+        with tf.device('/device:GPU:0'):
+            net, reuse_vars = vgg19.build_network(stem['input_transformed'], args.model_weights)
+            content_net, _ = vgg19.build_network(stem['content_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
+        with tf.device('/device:GPU:1'):
+            style_net, _ = vgg19.build_network(stem['style_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
         self.nets.append(net)
         self.content_nets.append(content_net)
         self.style_nets.append(style_net)
@@ -518,12 +520,14 @@ class Model:
         c = stem['content_input_transformed']
         s = stem['style_input_transformed']
         for i in range(args.octaves - 1):
-            o = downsample(o)
-            c = downsample(c)
-            s = downsample(s)
-            net, _ = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
-            content_net, _ = vgg19.build_network(c, args.model_weights, reuse_vars=reuse_vars)
-            style_net, _ = vgg19.build_network(s, args.model_weights, reuse_vars=reuse_vars)
+            with tf.device('/device:GPU:0'):
+                o = downsample(o)
+                c = downsample(c)
+                net, _ = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
+                content_net, _ = vgg19.build_network(c, args.model_weights, reuse_vars=reuse_vars)
+            with tf.device('/device:GPU:1'):
+                s = downsample(s)
+                style_net, _ = vgg19.build_network(s, args.model_weights, reuse_vars=reuse_vars)
             self.nets.append(net)
             self.content_nets.append(content_net)
             self.style_nets.append(style_net)
