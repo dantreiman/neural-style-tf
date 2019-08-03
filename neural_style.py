@@ -756,7 +756,7 @@ class Model:
         iterations = 0
         loss_history = []
         while (iterations < self.max_tf_iterations):
-            _, l self.sess.run([self.train_op, loss])
+            _, l = self.sess.run([self.train_op, loss])
             loss_history.append(l)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
@@ -771,7 +771,7 @@ class Model:
         iterations = 0
         loss_history = []
         while (iterations < self.max_tf_iterations):
-            _, l self.sess.run([self.train_op, loss])
+            _, l = self.sess.run([self.train_op, loss])
             loss_history.append(l)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
@@ -787,7 +787,7 @@ class Model:
         iterations = 0
         loss_history = []
         while (iterations < self.max_tf_iterations):
-            _, l self.sess.run([self.train_op, loss])
+            _, l = self.sess.run([self.train_op, loss])
             loss_history.append(l)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
