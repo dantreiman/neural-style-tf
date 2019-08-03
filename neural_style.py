@@ -754,34 +754,48 @@ class Model:
     def minimize_with_gd(self, loss):
         if args.verbose: print('\nMINIMIZING LOSS USING: GRADIENT DESCENT OPTIMIZER', flush=True)
         iterations = 0
+        loss_history = []
         while (iterations < self.max_tf_iterations):
-            self.sess.run(self.train_op)
+            _, l self.sess.run([self.train_op, loss])
+            loss_history.append(l)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
-                curr_loss = self.sess.run(loss)
-                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr), flush=True)
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr), flush=True)
+            if args.early_stopping and self.should_stop_early(loss_history):
+                print('Stopping early', flush=True)
+                return
             iterations += 1
 
     def minimize_with_adagrad(self, loss):
         if args.verbose: print('\nMINIMIZING LOSS USING: ADAGRAD OPTIMIZER', flush=True)
         iterations = 0
+        loss_history = []
         while (iterations < self.max_tf_iterations):
-            self.sess.run(self.train_op)
+            _, l self.sess.run([self.train_op, loss])
+            loss_history.append(l)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
-                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr), flush=True)
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr), flush=True)
+            if args.early_stopping and self.should_stop_early(loss_history):
+                print('Stopping early', flush=True)
+                return
             iterations += 1
 
     def minimize_with_nesterov(self, loss):
         if args.verbose: print('\nMINIMIZING LOSS USING: NESTEROV MOMENTUM', flush=True)
         iterations = 0
+        loss_history = []
         while (iterations < self.max_tf_iterations):
-            self.sess.run(self.train_op)
+            _, l self.sess.run([self.train_op, loss])
+            loss_history.append(l)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
-                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr), flush=True)
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr), flush=True)
+            if args.early_stopping and self.should_stop_early(loss_history):
+                print('Stopping early', flush=True)
+                return
             iterations += 1
 
     def setup_optimizer(self, loss):
