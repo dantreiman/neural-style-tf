@@ -179,8 +179,8 @@ def parse_args():
     parser.add_argument('--early_stopping', action='store_true',
                         help='Stop each frame early if loss change is below a target. Only works for ADAM.')
 
-    parser.add_argument('--min_iterations', type=int, default=100,
-                        help='Minimum number of iterations.  Used with early stopping.')
+    parser.add_argument('--loss_target', type=float, default=4e8,
+                        help='Allow early stopping once overall loss gets below this level.')
 
     parser.add_argument('--transforms', type=str,
                         default='none',
@@ -728,13 +728,10 @@ class Model:
         self.sc_optimizer.minimize(self.sess)
 
     def should_stop_early(self, loss_history):
-        if len(loss_history) < args.min_iterations:
+        if len(loss_history) < 100:
             return False
-        y2 = loss_history[-1]
-        y1 = loss_history[-2]
-        pct_change = ((y2 - y1) / y1) * 100
-        # Stop early if the loss decreased and the decrease was less than 0.01%
-        return pct_change > -0.01 and pct_change < 0
+        mean_loss = np.mean(loss_history[-50:])  # Mean over last 50 loss values
+        return mean_loss < args.loss_target
 
     def minimize_with_adam(self, loss):
         if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER', flush=True)
