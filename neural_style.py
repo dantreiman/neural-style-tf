@@ -153,11 +153,6 @@ def parse_args():
                         choices=['avg', 'max'],
                         help='Type of pooling in convolutional neural network. (default: %(default)s)')
 
-    parser.add_argument('--device', type=str,
-                        default='/gpu:0',
-                        choices=['/gpu:0', '/cpu:0'],
-                        help='GPU or CPU mode.  GPU mode requires NVIDIA CUDA. (default|recommended: %(default)s)')
-
     parser.add_argument('--img_output_dir', type=str,
                         default='./image_output',
                         help='Relative or absolute directory path to output image and data.')
@@ -414,26 +409,25 @@ def check_image(img, path):
 
 class Model:
     def __init__(self):
-        with tf.device(args.device):
-            self.sess = tf.Session()
-            self.stem = {}  # The common portion of the neural network, before image pyramid
-            self.nets = []  # The networks for each layer of the pyramid, from largest to smallest
-            self.content_nets = []  # The content loss networks for each layer of the pyramid.
-            self.style_nets = [] # The style image networks for each layer of the pyramid.
-            self.content_weights = None
-            self.pixel_age_frame = -1  # The frame index that we computed pixel age for last.
-            self.age_per_frame = 4  # The amount to advance the 'age' of each pixel per frame.
-            self.max_age = self.age_per_frame * args.depth_lookback  # The maximum pixel age.
-            self.pixel_age = None  # The 'age' of each pixel, in frames.
-            self.loss = None
-            self.debug_losses = {}
-            self.tf_optimizer = None
-            self.sc_optimizer = None
-            self.tf_optimizer_initializer = None
-            self.train_op = None
-            self.max_tf_iterations = None  # Max iterations of whichever TF optimizer we're using.
-            self.max_bfgs_iterations = None  # Max iterations of L-BFGS.
-            self.set_max_iterations(args.max_iterations)
+        self.sess = tf.Session()
+        self.stem = {}  # The common portion of the neural network, before image pyramid
+        self.nets = []  # The networks for each layer of the pyramid, from largest to smallest
+        self.content_nets = []  # The content loss networks for each layer of the pyramid.
+        self.style_nets = [] # The style image networks for each layer of the pyramid.
+        self.content_weights = None
+        self.pixel_age_frame = -1  # The frame index that we computed pixel age for last.
+        self.age_per_frame = 4  # The amount to advance the 'age' of each pixel per frame.
+        self.max_age = self.age_per_frame * args.depth_lookback  # The maximum pixel age.
+        self.pixel_age = None  # The 'age' of each pixel, in frames.
+        self.loss = None
+        self.debug_losses = {}
+        self.tf_optimizer = None
+        self.sc_optimizer = None
+        self.tf_optimizer_initializer = None
+        self.train_op = None
+        self.max_tf_iterations = None  # Max iterations of whichever TF optimizer we're using.
+        self.max_bfgs_iterations = None  # Max iterations of L-BFGS.
+        self.set_max_iterations(args.max_iterations)
 
     def set_max_iterations(self, max_iterations):
         if args.optimizer == 'mixed':
