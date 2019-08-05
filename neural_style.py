@@ -1,10 +1,24 @@
+import gpu_lock
+import os
+import sys
+
+# Lock the first two available GPUS
+available_gpus = gpu_lock.available_gpus()
+if (len(available_gpus) < 2):
+    print('Need 2 GPUs available to run!')
+    sys.exit(1)
+selected_gpus = available_gpus[:2]
+gpu_lock.lock_gpus(selected_gpus)
+
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+os.environ['CUDA_VISIBLE_DvEVICES'] = ','.join([str(g for g in selected_gpus)])
+
 import tensorflow as tf
 import numpy as np
 import argparse
 import errno
 import time
 import cv2
-import os
 
 import exr
 import losses
@@ -502,10 +516,10 @@ class Model:
         stem['style_input_transformed'] = input_transformed_t[3:] if transforms_resize_style else stem['style_input']  # Note: there might be multiple style images
         self.stem = stem
 
-        with tf.device('/device:GPU:0'):
+        with tf.device('/device:GPU:%d' % selected_gpus[0]):
             net, reuse_vars = vgg19.build_network(stem['input_transformed'], args.model_weights)
             content_net, _ = vgg19.build_network(stem['content_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
-        with tf.device('/device:GPU:1'):
+        with tf.device('/device:GPU:%d' % selected_gpus[1]):
             style_net, _ = vgg19.build_network(stem['style_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
         self.nets.append(net)
         self.content_nets.append(content_net)
@@ -522,12 +536,12 @@ class Model:
         c = stem['content_input_transformed']
         s = stem['style_input_transformed']
         for i in range(args.octaves - 1):
-            with tf.device('/device:GPU:0'):
+            with tf.device('/device:GPU:%d' % selected_gpus[0]):
                 o = downsample(o)
                 c = downsample(c)
                 net, _ = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
                 content_net, _ = vgg19.build_network(c, args.model_weights, reuse_vars=reuse_vars)
-            with tf.device('/device:GPU:1'):
+            with tf.device('/device:GPU:%d' % selected_gpus[1]):
                 s = downsample(s)
                 style_net, _ = vgg19.build_network(s, args.model_weights, reuse_vars=reuse_vars)
             self.nets.append(net)
@@ -540,7 +554,7 @@ class Model:
         # setup network
         stem, nets, content_nets, style_nets = self.build_network(content_img, n_styles=len(style_imgs))
         # style loss
-        with tf.device('/device:GPU:1'):
+        with tf.device('/device:GPU:%d' % selected_gpus[1]):
             if args.style_mask:
                 L_style = self.sum_masked_style_losses()
             elif args.correlate_octaves:
@@ -548,7 +562,7 @@ class Model:
             else:
                 L_style = self.sum_style_losses()
 
-        with tf.device('/device:GPU:0'):
+        with tf.device('/device:GPU:%d' % selected_gpus[0]):
             # content loss
             L_content = self.setup_content_loss()
             # denoising loss
@@ -1141,6 +1155,7 @@ def main():
         render_video()
     else:
         render_single_image()
+    gpu_lock.unlock_gpus(selected_gpus)
 
 
 if __name__ == '__main__':
