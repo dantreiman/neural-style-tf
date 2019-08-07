@@ -23,7 +23,7 @@ def num_gpus():
     try:
         csv = subprocess.check_output(command_args)
         csv_lines = str(csv).split('\\n')
-        return csv_lines - 2  # one for header row, one for trailing newline.
+        return len(csv_lines) - 2  # one for header row, one for trailing newline.
     except:
         return 0
 
