@@ -13,6 +13,7 @@ print('Acquired GPUs: %s' % str(selected_gpus), flush=True)
 
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
 os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g for g in selected_gpus)])
+print('CUDA_VISIBLE_DEVICES = %s' % ','.join([str(g for g in selected_gpus)]), flush=True)
 
 
 import tensorflow as tf
