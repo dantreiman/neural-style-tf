@@ -158,7 +158,7 @@ for i, c in enumerate(commands):
         '-terse',
         '-b', 'y',
         '-q', RENDER_QUEUE,
-        '-v', 'REQUIRED_GPUS=%d,LD_LIBRARY_PATH=/home/ubuntu/src/cntk/bindings/python/cntk/libs:/usr/local/cuda/lib64:/usr/local/lib:/usr/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/mpi/lib:' % N_GPUS,
+        '-v', 'STYLE_GPUS_REQUIRED=%d,LD_LIBRARY_PATH=/home/ubuntu/src/cntk/bindings/python/cntk/libs:/usr/local/cuda/lib64:/usr/local/lib:/usr/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/mpi/lib:' % N_GPUS,
         '-o', os.path.join(job_log_path, '%s_%d_render.stdout' % (output_prefix, output_index)),
         '-e', os.path.join(job_log_path, '%s_%d_render.stderr' % (output_prefix, output_index))
     ]

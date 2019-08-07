@@ -4,15 +4,18 @@ import sys
 
 REQUIRED_GPUS = int(os.environ['STYLE_GPUS_REQUIRED']) if 'STYLE_GPUS_REQUIRED' in os.environ else 1
 # Lock the first two available GPUS
-available_gpus = gpu_lock.available_gpus()
-if (len(available_gpus) < REQUIRED_GPUS):
-    print('Need %d GPUs available to run!' % REQUIRED_GPUS)
-    sys.exit(1)
-selected_gpus = available_gpus[:REQUIRED_GPUS]
-gpu_lock.lock_gpus(selected_gpus)
+if REQUIRED_GPUS > 0:
+    available_gpus = gpu_lock.available_gpus()
+    if (len(available_gpus) < REQUIRED_GPUS):
+        print('Need %d GPUs available to run!' % REQUIRED_GPUS)
+        sys.exit(1)
+    selected_gpus = available_gpus[:REQUIRED_GPUS]
+    gpu_lock.lock_gpus(selected_gpus)
+    os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g for g in selected_gpus)])
+else:
+    available_gpus = []
 
-os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g for g in selected_gpus)])
 
 import tensorflow as tf
 import numpy as np
@@ -118,7 +121,7 @@ def parse_args():
                         help='One of {gaussian, laplacian, bilinear}')
 
     parser.add_argument('--octaves', type=int, default=1,
-                        help='Each octave represents an additonal level of detail in an image pyramid.')
+                        help='Each octave represents an additional level of detail in an image pyramid.')
 
     parser.add_argument('--style_octave_weights', nargs='+', type=float,
                         default=[1.0],
