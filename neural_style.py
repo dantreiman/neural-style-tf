@@ -1177,11 +1177,15 @@ def render_video():
 def main():
     global args
     args = parse_args()
-    if args.video:
-        render_video()
-    else:
-        render_single_image()
-    gpu_lock.unlock_gpus(selected_gpus)
+    try:
+        if args.video:
+            render_video()
+        else:
+            render_single_image()
+    except Exception as e:
+        print('%s', str(e))
+    finally:
+        gpu_lock.unlock_gpus(selected_gpus)
 
 
 if __name__ == '__main__':
