@@ -7,7 +7,10 @@ NVIDIA_SMI = '/usr/bin/nvidia-smi'
 
 
 if not os.path.isdir(LOCK_DIR):
-    os.mkdir(LOCK_DIR)
+    try:
+        os.mkdir(LOCK_DIR)
+    except:
+        print('%s already exists', LOCK_DIR)
 
 
 def num_gpus():
