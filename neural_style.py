@@ -2,16 +2,17 @@ import gpu_lock
 import os
 import sys
 
+REQUIRED_GPUS = int(os.environ['STYLE_GPUS_REQUIRED']) if 'STYLE_GPUS_REQUIRED' in os.environ else 1
 # Lock the first two available GPUS
 available_gpus = gpu_lock.available_gpus()
-if (len(available_gpus) < 2):
-    print('Need 2 GPUs available to run!')
+if (len(available_gpus) < REQUIRED_GPUS):
+    print('Need %d GPUs available to run!' % REQUIRED_GPUS)
     sys.exit(1)
-selected_gpus = available_gpus[:2]
+selected_gpus = available_gpus[:REQUIRED_GPUS]
 gpu_lock.lock_gpus(selected_gpus)
 
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-os.environ['CUDA_VISIBLE_DvEVICES'] = ','.join([str(g for g in selected_gpus)])
+os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g for g in selected_gpus)])
 
 import tensorflow as tf
 import numpy as np
@@ -421,6 +422,11 @@ def check_image(img, path):
         raise OSError(errno.ENOENT, "No such file", path)
 
 
+def gpu_device(index):
+    index = min(index, len(selected_gpus) - 1)
+    return tf.device('/device:GPU:%d' % selected_gpus[index])
+
+
 class Model:
     def __init__(self):
         self.sess = tf.Session()
@@ -516,10 +522,9 @@ class Model:
         stem['style_input_transformed'] = input_transformed_t[3:] if transforms_resize_style else stem['style_input']  # Note: there might be multiple style images
         self.stem = stem
 
-        with tf.device('/device:GPU:%d' % selected_gpus[0]):
+        with gpu_device(0):
             net, reuse_vars = vgg19.build_network(stem['input_transformed'], args.model_weights)
             content_net, _ = vgg19.build_network(stem['content_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
-        with tf.device('/device:GPU:%d' % selected_gpus[1]):
             style_net, _ = vgg19.build_network(stem['style_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
         self.nets.append(net)
         self.content_nets.append(content_net)
@@ -536,13 +541,12 @@ class Model:
         c = stem['content_input_transformed']
         s = stem['style_input_transformed']
         for i in range(args.octaves - 1):
-            with tf.device('/device:GPU:%d' % selected_gpus[0]):
+            with gpu_device(min(i, 1)):  # Place first octave on primary GPU, higher octaves on secondary
                 o = downsample(o)
                 c = downsample(c)
+                s = downsample(s)
                 net, _ = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
                 content_net, _ = vgg19.build_network(c, args.model_weights, reuse_vars=reuse_vars)
-            with tf.device('/device:GPU:%d' % selected_gpus[1]):
-                s = downsample(s)
                 style_net, _ = vgg19.build_network(s, args.model_weights, reuse_vars=reuse_vars)
             self.nets.append(net)
             self.content_nets.append(content_net)
@@ -554,19 +558,17 @@ class Model:
         # setup network
         stem, nets, content_nets, style_nets = self.build_network(content_img, n_styles=len(style_imgs))
         # style loss
-        with tf.device('/device:GPU:%d' % selected_gpus[1]):
-            if args.style_mask:
-                L_style = self.sum_masked_style_losses()
-            elif args.correlate_octaves:
-                L_style = self.sum_style_losses_correlate_octaves()
-            else:
-                L_style = self.sum_style_losses()
+        if args.style_mask:
+            L_style = self.sum_masked_style_losses()
+        elif args.correlate_octaves:
+            L_style = self.sum_style_losses_correlate_octaves()
+        else:
+            L_style = self.sum_style_losses()
 
-        with tf.device('/device:GPU:%d' % selected_gpus[0]):
-            # content loss
-            L_content = self.setup_content_loss()
-            # denoising loss
-            L_tv = tf.image.total_variation(stem['input'])
+        # content loss
+        L_content = self.setup_content_loss()
+        # denoising loss
+        L_tv = tf.image.total_variation(stem['input'])
 
         # loss weights
         alpha = args.content_weight
@@ -621,10 +623,11 @@ class Model:
             style_loss = 0.
             for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
                 octave_weight = style_weight_for_octave(o)
-                for layer, weight in zip(args.style_layers, args.style_layer_weights):
-                    a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
-                    x = net[layer]
-                    style_loss += losses.style_layer_loss(a, x) * octave_weight * weight
+                with gpu_device(min(o, 1)):  # Place first octave on primary GPU, higher octaves on secondary
+                    for layer, weight in zip(args.style_layers, args.style_layer_weights):
+                        a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
+                        x = net[layer]
+                        style_loss += losses.style_layer_loss(a, x) * octave_weight * weight
             style_loss /= float(len(args.style_layers))
             style_losses.append(style_loss * img_weight)
         return tf.reduce_mean(style_losses)
@@ -638,13 +641,14 @@ class Model:
                 a_o = []
                 x_o = []
                 for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
-                    a = style_net[layer][i:i + 1]  # The activations of layer for the ith style image
-                    x = net[layer]
-                    a_shape = tf.shape(a)
-                    n, h, w, c = (a_shape[0], a_shape[1], a_shape[2], a_shape[3])
-                    octave_weight = style_weight_for_octave(o)
-                    a_o.append(tf.reshape(a, [n, 1, h*w, c]) * octave_weight)
-                    x_o.append(tf.reshape(x, [n, 1, h*w, c]) * octave_weight)
+                    with gpu_device(min(o, 1)):
+                        a = style_net[layer][i:i + 1]  # The activations of layer for the ith style image
+                        x = net[layer]
+                        a_shape = tf.shape(a)
+                        n, h, w, c = (a_shape[0], a_shape[1], a_shape[2], a_shape[3])
+                        octave_weight = style_weight_for_octave(o)
+                        a_o.append(tf.reshape(a, [n, 1, h*w, c]) * octave_weight)
+                        x_o.append(tf.reshape(x, [n, 1, h*w, c]) * octave_weight)
                 style_loss += losses.style_layer_loss(tf.concat(a_o, 2), tf.concat(x_o, 2)) * weight
             style_loss /= float(len(args.style_layers))
             style_losses.append(style_loss * img_weight)
@@ -653,7 +657,9 @@ class Model:
     def setup_z_temporal_loss(self, h, w):
         self.pixel_age = np.ones((h, w), dtype=np.uint8) * self.max_age
         self.pixel_age_frame = -1
-        return losses.weighted_content_loss(self.stem['input'], self.stem['prev_input'], self.stem['temporal_weights'])
+        with gpu_device(0):
+            z_temporal_loss = losses.weighted_content_loss(self.stem['input'], self.stem['prev_input'], self.stem['temporal_weights'])
+        return z_temporal_loss
 
     def update_z_temporal_loss(self, frame, content_img):
         frame_start = max(frame - args.depth_lookback, args.initial_frame, self.pixel_age_frame)
@@ -683,10 +689,11 @@ class Model:
         content_losses = []
         for o, (net, content_net) in enumerate(zip(self.nets, self.content_nets)):
             octave_weight = content_weight_for_octave(o)
-            for layer_name, weight in zip(args.content_layers, args.content_layer_weights):
-                a = content_net[layer_name]
-                x = net[layer_name]
-                content_losses.append(losses.content_layer_loss(a, x) * weight * octave_weight)
+            with gpu_device(min(o, 1)):
+                for layer_name, weight in zip(args.content_layers, args.content_layer_weights):
+                    a = content_net[layer_name]
+                    x = net[layer_name]
+                    content_losses.append(losses.content_layer_loss(a, x) * weight * octave_weight)
         content_loss = tf.reduce_mean(content_losses)
         return content_loss
 
