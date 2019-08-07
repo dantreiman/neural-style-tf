@@ -12,8 +12,8 @@ selected_gpus = gpu_lock.acquire_gpus(REQUIRED_GPUS, timeout=60)
 print('Acquired GPUs: %s' % str(selected_gpus), flush=True)
 
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g for g in selected_gpus)])
-print('CUDA_VISIBLE_DEVICES = %s' % ','.join([str(g for g in selected_gpus)]), flush=True)
+os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g) for g in selected_gpus])
+print('CUDA_VISIBLE_DEVICES = %s' % ','.join([str(g) for g in selected_gpus]), flush=True)
 
 
 import tensorflow as tf
@@ -439,7 +439,7 @@ def check_image(img, path):
 
 def gpu_device(index):
     index = min(index, len(selected_gpus) - 1)
-    return tf.device('/device:GPU:%d' % selected_gpus[index])
+    return tf.device('/device:GPU:%d' % index)
 
 
 class Model:
