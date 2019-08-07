@@ -15,9 +15,12 @@ def num_gpus():
         NVIDIA_SMI,
         '--query-gpu=gpu_name,gpu_bus_id,vbios_version',
         '--format=csv']
-    csv = subprocess.check_output(command_args)
-    csv_lines = str(csv).split('\\n')
-    return csv_lines - 2  # one for header row, one for trailing newline.
+    try:
+        csv = subprocess.check_output(command_args)
+        csv_lines = str(csv).split('\\n')
+        return csv_lines - 2  # one for header row, one for trailing newline.
+    except:
+        return 0
 
 
 def lock_path_for_gpu(gpu):
