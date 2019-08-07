@@ -538,6 +538,7 @@ class Model:
         with gpu_device(0):
             net, reuse_vars = vgg19.build_network(stem['input_transformed'], args.model_weights)
             content_net, _ = vgg19.build_network(stem['content_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
+        with gpu_device(1):
             style_net, _ = vgg19.build_network(stem['style_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
         self.nets.append(net)
         self.content_nets.append(content_net)
@@ -554,12 +555,13 @@ class Model:
         c = stem['content_input_transformed']
         s = stem['style_input_transformed']
         for i in range(args.octaves - 1):
-            with gpu_device(min(i, 1)):  # Place first octave on primary GPU, higher octaves on secondary
+            with gpu_device(0):
                 o = downsample(o)
                 c = downsample(c)
-                s = downsample(s)
                 net, _ = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
                 content_net, _ = vgg19.build_network(c, args.model_weights, reuse_vars=reuse_vars)
+            with gpu_device(1):
+                s = downsample(s)
                 style_net, _ = vgg19.build_network(s, args.model_weights, reuse_vars=reuse_vars)
             self.nets.append(net)
             self.content_nets.append(content_net)
@@ -632,29 +634,30 @@ class Model:
     def sum_style_losses(self):
         style_losses = []
         weights = args.style_imgs_weights
-        for i, img_weight in enumerate(weights):
-            style_loss = 0.
-            for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
-                octave_weight = style_weight_for_octave(o)
-                with gpu_device(min(o, 1)):  # Place first octave on primary GPU, higher octaves on secondary
+        with gpu_device(1):
+            for i, img_weight in enumerate(weights):
+                style_loss = 0.
+                for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
+                    octave_weight = style_weight_for_octave(o)
                     for layer, weight in zip(args.style_layers, args.style_layer_weights):
                         a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
                         x = net[layer]
                         style_loss += losses.style_layer_loss(a, x) * octave_weight * weight
-            style_loss /= float(len(args.style_layers))
-            style_losses.append(style_loss * img_weight)
-        return tf.reduce_mean(style_losses)
+                style_loss /= float(len(args.style_layers))
+                style_losses.append(style_loss * img_weight)
+            mean_style_loss = tf.reduce_mean(style_losses)
+        return mean_style_loss
 
     def sum_style_losses_correlate_octaves(self):
         style_losses = []
         weights = args.style_imgs_weights
-        for i, img_weight in enumerate(weights):
-            style_loss = 0.
-            for layer, weight in zip(args.style_layers, args.style_layer_weights):
-                a_o = []
-                x_o = []
-                for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
-                    with gpu_device(min(o, 1)):
+        with gpu_device(1):
+            for i, img_weight in enumerate(weights):
+                style_loss = 0.
+                for layer, weight in zip(args.style_layers, args.style_layer_weights):
+                    a_o = []
+                    x_o = []
+                    for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
                         a = style_net[layer][i:i + 1]  # The activations of layer for the ith style image
                         x = net[layer]
                         a_shape = tf.shape(a)
@@ -662,10 +665,11 @@ class Model:
                         octave_weight = style_weight_for_octave(o)
                         a_o.append(tf.reshape(a, [n, 1, h*w, c]) * octave_weight)
                         x_o.append(tf.reshape(x, [n, 1, h*w, c]) * octave_weight)
-                style_loss += losses.style_layer_loss(tf.concat(a_o, 2), tf.concat(x_o, 2)) * weight
-            style_loss /= float(len(args.style_layers))
-            style_losses.append(style_loss * img_weight)
-        return tf.reduce_mean(style_losses)
+                    style_loss += losses.style_layer_loss(tf.concat(a_o, 2), tf.concat(x_o, 2)) * weight
+                style_loss /= float(len(args.style_layers))
+                style_losses.append(style_loss * img_weight)
+            mean_style_loss = tf.reduce_mean(style_losses)
+        return mean_style_loss
 
     def setup_z_temporal_loss(self, h, w):
         self.pixel_age = np.ones((h, w), dtype=np.uint8) * self.max_age
@@ -700,15 +704,15 @@ class Model:
     def setup_content_loss(self):
         stem = self.stem
         content_losses = []
-        for o, (net, content_net) in enumerate(zip(self.nets, self.content_nets)):
-            octave_weight = content_weight_for_octave(o)
-            with gpu_device(min(o, 1)):
+        with gpu_device(0):
+            for o, (net, content_net) in enumerate(zip(self.nets, self.content_nets)):
+                octave_weight = content_weight_for_octave(o)
                 for layer_name, weight in zip(args.content_layers, args.content_layer_weights):
                     a = content_net[layer_name]
                     x = net[layer_name]
                     content_losses.append(losses.content_layer_loss(a, x) * weight * octave_weight)
-        content_loss = tf.reduce_mean(content_losses)
-        return content_loss
+            mean_content_loss = tf.reduce_mean(content_losses)
+        return mean_content_loss
 
     def update_content_loss(self, content_img):
         self.sess.run(self.stem['content_input_assign'], feed_dict={self.stem['content_input_in']: content_img})
