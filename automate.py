@@ -16,6 +16,9 @@ RENDER_QUEUE = 'gpu.q'
 # SGE queue to encode movies on
 ENCODE_QUEUE = 'cpu.q'
 
+# Number of GPUs required for each job
+N_GPUS = 1
+
 # ---------------------------------------- Configurable Settings ----------------------------------------
 
 # Directory to store rendered image series.  Will be created if does not already exist.
@@ -32,6 +35,7 @@ style_transfer_script_dir = '/data/home/dan.treiman/neural-style-tf'
 
 # Start index to use to label output files
 output_index_start = 0
+
 
 # List of params to pass to the style transfer function.  Params take the form of tuples, where the first element is the
 # argument, the second is the value.  If the value is a list, then the script is run once for each element of the list.
@@ -154,7 +158,7 @@ for i, c in enumerate(commands):
         '-terse',
         '-b', 'y',
         '-q', RENDER_QUEUE,
-        '-v', 'LD_LIBRARY_PATH=/home/ubuntu/src/cntk/bindings/python/cntk/libs:/usr/local/cuda/lib64:/usr/local/lib:/usr/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/mpi/lib:',
+        '-v', 'REQUIRED_GPUS=%d,LD_LIBRARY_PATH=/home/ubuntu/src/cntk/bindings/python/cntk/libs:/usr/local/cuda/lib64:/usr/local/lib:/usr/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/mpi/lib:' % N_GPUS,
         '-o', os.path.join(job_log_path, '%s_%d_render.stdout' % (output_prefix, output_index)),
         '-e', os.path.join(job_log_path, '%s_%d_render.stderr' % (output_prefix, output_index))
     ]
