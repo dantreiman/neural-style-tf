@@ -316,7 +316,7 @@ def parse_args():
     args.content_layer_weights = [float(s) for s in args.content_layer_weights.split(',')]
     args.style_layer_weights = [float(s) for s in args.style_layer_weights.split(',')]
     args.style_octave_weights = [float(s) for s in args.style_octave_weights.split(',')]
-    args.content_octave_weights = [float(s) for s in args.content_octave_weights.split(,)]
+    args.content_octave_weights = [float(s) for s in args.content_octave_weights.split(',')]
 
     # normalize weights
     args.style_layer_weights = normalize(args.style_layer_weights)
