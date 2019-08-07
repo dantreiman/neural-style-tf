@@ -1,6 +1,7 @@
 import os
 from simpleflock import SimpleFlock
 import subprocess
+import sys
 
 LOCK_DIR = '/tmp/gpu_locks'
 
@@ -37,6 +38,7 @@ def is_locked(gpu):
 
 def get_available_gpus():
     n_gpus = num_gpus()
+    print('num_gpus: %d' % n_gpus)
     all_gpus = set(range(n_gpus))
     for gpu in range(n_gpus):
         if is_locked(gpu):
@@ -55,6 +57,7 @@ def acquire_gpus(required_gpus, timeout=60):
     """Lock the required number of GPUs, return a list."""
     with SimpleFlock('/tmp/gpu_locks/global.lock', timeout):
         available_gpus = get_available_gpus()
+        print('available_gpus: %s' % str(available_gpus))
         if (len(available_gpus) < required_gpus):
             print('Need %d GPUs available to run!' % required_gpus)
             sys.exit(1)
