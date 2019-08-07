@@ -53,4 +53,8 @@ def lock_gpus(gpus):
 def unlock_gpus(gpus):
     """Given list of GPU ids, unlock all"""
     for gpu in gpus:
-        os.remove(lock_path_for_gpu(gpu))
+        lock_path = lock_path_for_gpu(gpu)
+        try:
+            os.remove(lock_path)
+        except:
+            print('Failed to remove gpu lock at %s' % lock_path)

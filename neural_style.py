@@ -5,12 +5,21 @@ import sys
 # Lock GPUs if required.
 REQUIRED_GPUS = int(os.environ['STYLE_GPUS_REQUIRED']) if 'STYLE_GPUS_REQUIRED' in os.environ else 1
 
-available_gpus = gpu_lock.available_gpus()
-if (len(available_gpus) < REQUIRED_GPUS):
-    print('Need %d GPUs available to run!' % REQUIRED_GPUS)
-    sys.exit(1)
-selected_gpus = available_gpus[:REQUIRED_GPUS]
-gpu_lock.lock_gpus(selected_gpus)
+def lock_gpus():
+    """Lock the required number of GPUs, return a list."""
+    available_gpus = gpu_lock.available_gpus()
+    if (len(available_gpus) < REQUIRED_GPUS):
+        print('Need %d GPUs available to run!' % REQUIRED_GPUS)
+        sys.exit(1)
+    selected_gpus = available_gpus[:REQUIRED_GPUS]
+    gpu_lock.lock_gpus(selected_gpus)
+    return selected_gpus
+
+selected_gpus = [0]
+
+if REQUIRED_GPUS > 1:
+    selected_gpus = lock_gpus()
+
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
 os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g for g in selected_gpus)])
 
