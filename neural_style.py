@@ -1176,8 +1176,8 @@ def render_video():
 
 def main():
     global args
-    args = parse_args()
     try:
+        args = parse_args()
         if args.video:
             render_video()
         else:
