@@ -309,14 +309,14 @@ def parse_args():
     args = parser.parse_args()
 
     # preprocess list args
-    args.style_imgs = ','.split(args.style_imgs)
-    args.style_imgs_weights = [float(s) for s in ','.split(args.style_imgs_weights)]
-    args.content_layers = ','.split(args.content_layers)
-    args.style_layers = ','.split(args.style_layers)
-    args.content_layer_weights = [float(s) for s in ','.split(args.content_layer_weights)]
-    args.style_layer_weights = [float(s) for s in ','.split(args.style_layer_weights)]
-    args.style_octave_weights = [float(s) for s in ','.split(args.style_octave_weights)]
-    args.content_octave_weights = [float(s) for s in ','.split(args.content_octave_weights)]
+    args.style_imgs = args.style_imgs.split(',')
+    args.style_imgs_weights = [float(s) for s in args.style_imgs_weights.split(',')]
+    args.content_layers = args.content_layers.split(',')
+    args.style_layers = args.style_layers.split(',')
+    args.content_layer_weights = [float(s) for s in args.content_layer_weights.split(',')]
+    args.style_layer_weights = [float(s) for s in args.style_layer_weights.split(',')]
+    args.style_octave_weights = [float(s) for s in args.style_octave_weights.split(',')]
+    args.content_octave_weights = [float(s) for s in args.content_octave_weights.split(,)]
 
     # normalize weights
     args.style_layer_weights = normalize(args.style_layer_weights)
