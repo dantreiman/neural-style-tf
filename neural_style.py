@@ -7,8 +7,9 @@ REQUIRED_GPUS = int(os.environ['STYLE_GPUS_REQUIRED']) if 'STYLE_GPUS_REQUIRED' 
 
 selected_gpus = [0]
 
-if REQUIRED_GPUS > 1:
-    selected_gpus = gpu_lock.acquire_gpus(REQUIRED_GPUS, timeout=60)
+print('Attempting to acquire %d gpus' % REQUIRED_GPUS, flush=True)
+selected_gpus = gpu_lock.acquire_gpus(REQUIRED_GPUS, timeout=60)
+print('Acquired GPUs: %s' % str(selected_gpus), flush=True)
 
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
 os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g for g in selected_gpus)])
