@@ -2,19 +2,17 @@ import gpu_lock
 import os
 import sys
 
+# Lock GPUs if required.
 REQUIRED_GPUS = int(os.environ['STYLE_GPUS_REQUIRED']) if 'STYLE_GPUS_REQUIRED' in os.environ else 1
-# Lock the first two available GPUS
-if REQUIRED_GPUS > 0:
-    available_gpus = gpu_lock.available_gpus()
-    if (len(available_gpus) < REQUIRED_GPUS):
-        print('Need %d GPUs available to run!' % REQUIRED_GPUS)
-        sys.exit(1)
-    selected_gpus = available_gpus[:REQUIRED_GPUS]
-    gpu_lock.lock_gpus(selected_gpus)
-    os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g for g in selected_gpus)])
-else:
-    available_gpus = []
+
+available_gpus = gpu_lock.available_gpus()
+if (len(available_gpus) < REQUIRED_GPUS):
+    print('Need %d GPUs available to run!' % REQUIRED_GPUS)
+    sys.exit(1)
+selected_gpus = available_gpus[:REQUIRED_GPUS]
+gpu_lock.lock_gpus(selected_gpus)
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g for g in selected_gpus)])
 
 
 import tensorflow as tf
@@ -49,11 +47,11 @@ def parse_args():
 
     # Each entry of style_imgs may be an image or video.
     # Filenames with a file extension are assumed to be images, directories are assumed to be videos.
-    parser.add_argument('--style_imgs', nargs='+', type=str,
+    parser.add_argument('--style_imgs', type=str,
                         help='Filenames of the style images (example: starry-night.jpg), or directories for video style.')
 
-    parser.add_argument('--style_imgs_weights', nargs='+', type=float,
-                        default=[1.0],
+    parser.add_argument('--style_imgs_weights', type=str,
+                        default='1.0',
                         help='Interpolation weights of each of the style images. (example: 0.5 0.5)')
 
     parser.add_argument('--content_img', type=str,
@@ -101,20 +99,20 @@ def parse_args():
                         choices=[1, 2, 3],
                         help='Different constants for the content layer loss function. (default: %(default)s)')
 
-    parser.add_argument('--content_layers', nargs='+', type=str,
-                        default=['conv4_2'],
+    parser.add_argument('--content_layers', type=str,
+                        default='conv4_2',
                         help='VGG19 layers used for the content image. (default: %(default)s)')
 
-    parser.add_argument('--style_layers', nargs='+', type=str,
-                        default=['relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1'],
+    parser.add_argument('--style_layers', type=str,
+                        default='relu1_1,relu2_1,relu3_1,relu4_1,relu5_1',
                         help='VGG19 layers used for the style image. (default: %(default)s)')
 
-    parser.add_argument('--content_layer_weights', nargs='+', type=float,
-                        default=[1.0],
+    parser.add_argument('--content_layer_weights', type=str,
+                        default='1.0',
                         help='Contributions (weights) of each content layer to loss. (default: %(default)s)')
 
-    parser.add_argument('--style_layer_weights', nargs='+', type=float,
-                        default=[0.2, 0.2, 0.2, 0.2, 0.2],
+    parser.add_argument('--style_layer_weights', type=str,
+                        default='0.2,0.2,0.2,0.2,0.2',
                         help='Contributions (weights) of each style layer to loss. (default: %(default)s)')
 
     parser.add_argument('--downsample_method', type=str, default='gaussian',
@@ -123,12 +121,12 @@ def parse_args():
     parser.add_argument('--octaves', type=int, default=1,
                         help='Each octave represents an additional level of detail in an image pyramid.')
 
-    parser.add_argument('--style_octave_weights', nargs='+', type=float,
-                        default=[1.0],
+    parser.add_argument('--style_octave_weights', type=str,
+                        default='1.0',
                         help='Contributions (weights) of each octave to style loss. (default: %(default)s)')
 
-    parser.add_argument('--content_octave_weights', nargs='+', type=float,
-                        default=[1.0],
+    parser.add_argument('--content_octave_weights', type=str,
+                        default='1.0',
                         help='Contributions (weights) of each octave to content loss. (default: %(default)s)')
 
     parser.add_argument('--correlate_octaves', action='store_true',
@@ -309,6 +307,16 @@ def parse_args():
                         help='Maximum number of optimizer iterations for each frame after the first frame. (default: %(default)s)')
 
     args = parser.parse_args()
+
+    # preprocess list args
+    args.style_imgs = ','.split(args.style_imgs)
+    args.style_imgs_weights = [float(s) for s in ','.split(args.style_imgs_weights)]
+    args.content_layers = ','.split(args.content_layers)
+    args.style_layers = ','.split(args.style_layers)
+    args.content_layer_weights = [float(s) for s in ','.split(args.content_layer_weights)]
+    args.style_layer_weights = [float(s) for s in ','.split(args.style_layer_weights)]
+    args.style_octave_weights = [float(s) for s in ','.split(args.style_octave_weights)]
+    args.content_octave_weights = [float(s) for s in ','.split(args.content_octave_weights)]
 
     # normalize weights
     args.style_layer_weights = normalize(args.style_layer_weights)
