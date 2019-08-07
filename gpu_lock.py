@@ -35,7 +35,7 @@ def is_locked(gpu):
     return os.path.isfile(lock_path_for_gpu(gpu))
 
 
-def available_gpus():
+def get_available_gpus():
     n_gpus = num_gpus()
     all_gpus = set(range(n_gpus))
     for gpu in range(n_gpus):
@@ -54,7 +54,7 @@ def lock_gpus(gpus):
 def acquire_gpus(required_gpus, timeout=60):
     """Lock the required number of GPUs, return a list."""
     with SimpleFlock('/tmp/gpu_locks/global.lock', timeout):
-        available_gpus = available_gpus()
+        available_gpus = get_available_gpus()
         if (len(available_gpus) < required_gpus):
             print('Need %d GPUs available to run!' % required_gpus)
             sys.exit(1)
