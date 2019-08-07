@@ -54,12 +54,12 @@ def lock_gpus(gpus):
 def acquire_gpus(required_gpus, timeout=60):
     """Lock the required number of GPUs, return a list."""
     with SimpleFlock('/tmp/gpu_locks/global.lock', timeout):
-        available_gpus = gpu_lock.available_gpus()
+        available_gpus = available_gpus()
         if (len(available_gpus) < required_gpus):
             print('Need %d GPUs available to run!' % required_gpus)
             sys.exit(1)
         selected_gpus = available_gpus[:required_gpus]
-        gpu_lock.lock_gpus(selected_gpus)
+        lock_gpus(selected_gpus)
     return selected_gpus
 
 
