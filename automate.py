@@ -91,6 +91,7 @@ def get_param(name):
 
 content_frame_frmt = get_param('--content_frame_frmt')
 content_frame_digits = get_param('--content_frame_digits')
+initial_frame = get_param('--initial_frame')
 
 # ---------------------------------------- Initialization ----------------------------------------
 
@@ -184,6 +185,7 @@ for i, c in enumerate(commands):
         '-y',
         '-r', '25',
         '-f', 'image2',
+        '-start_number', str(initial_frame),
         '-i', os.path.join(output_dir, content_frame_frmt.format(
             '%0{}d'.format(content_frame_digits)
         )),
