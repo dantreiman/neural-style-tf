@@ -493,7 +493,7 @@ class Model:
         stem['temporal_weights'] = tf.Variable(np.zeros((1, h, w, 1)), dtype=tf.float32, trainable=False)
         stem['temporal_weights_assign'] = stem['temporal_weights'].assign(tf.expand_dims(tf.expand_dims(stem['temporal_weights_in'], 0), 3))
 
-        stem['style_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into style
+        stem['style_input_in'] = tf.placeholder(tf.float32, shape=(n_styles, h, w, d))  # Used to feed images into style
         stem['style_input'] = tf.Variable(np.zeros((n_styles, h, w, d), dtype=np.float32), trainable=False)
         stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
 
@@ -660,7 +660,7 @@ class Model:
                     a_o = []
                     x_o = []
                     for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
-                        a = style_net[layer][i:i + 1]  # The activations of layer for the ith style image
+                        a = style_net[layer][i:i+1]  # The activations of layer for the ith style image
                         x = net[layer]
                         a_shape = tf.shape(a)
                         n, h, w, c = (a_shape[0], a_shape[1], a_shape[2], a_shape[3])
