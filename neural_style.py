@@ -645,6 +645,8 @@ class Model:
                     for layer, weight in zip(args.style_layers, args.style_layer_weights):
                         a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
                         x = net[layer]
+                        print('a: ', str(a))
+                        print('x: ', str(x))
                         style_loss += losses.style_layer_loss(a, x) * octave_weight * weight
                 style_loss /= float(len(args.style_layers))
                 style_losses.append(style_loss * img_weight)
