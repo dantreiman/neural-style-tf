@@ -575,14 +575,14 @@ class Model:
         """Build model and load weights.  Content image is only used for computing size."""
         # setup network
         n_styles = len(style_imgs)
-        stem, nets, content_nets, style_nets = self.build_network(content_img, n_styles=n_styles
+        stem, nets, content_nets, style_nets = self.build_network(content_img, n_styles=n_styles)
         # style loss
         if args.style_mask:
-            L_style = self.sum_masked_style_losses(n_styles=n_styles)
+            L_style = self.sum_masked_style_losses(n_styles)
         elif args.correlate_octaves:
-            L_style = self.sum_style_losses_correlate_octaves(n_styles=n_styles)
+            L_style = self.sum_style_losses_correlate_octaves(n_styles)
         else:
-            L_style = self.sum_style_losses(n_styles=n_styles)
+            L_style = self.sum_style_losses(n_styles)
 
         # content loss
         L_content = self.setup_content_loss()
