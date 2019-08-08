@@ -1,6 +1,7 @@
 import gpu_lock
 import os
-
+import sys
+import traceback
 
 # Lock GPUs if required.
 REQUIRED_GPUS = int(os.environ['STYLE_GPUS_REQUIRED']) if 'STYLE_GPUS_REQUIRED' in os.environ else 1
@@ -1183,7 +1184,10 @@ def main():
         else:
             render_single_image()
     except Exception as e:
-        print('%s', str(e))
+        exc_info = sys.exc_info()
+        print('%s' % str(e))
+        traceback.print_exception(*exc_info)
+        del exc_info
     finally:
         gpu_lock.unlock_gpus(selected_gpus)
 
