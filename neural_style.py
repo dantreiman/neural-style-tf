@@ -1050,6 +1050,10 @@ def get_prev_warped_frame(frame, content_img):
         flow = flow * scale_f  # Multiplies displacement vectors by scale factor.
     # Filter flow by thresholding on content image value.
     # Approximate luminance
+    if frame > prev_frame:
+        content_weights = get_content_weights(frame, prev_frame)
+        flow_mask = np.expand_dims(content_weights[:,:,0], 0)
+        flow = flow * flow_mask
     threshold = args.flow_filter_threshold
     if threshold >= 0:
         warped_content_img = optical_flow.warp_image(content_img[0], flow).astype(np.float32)
