@@ -1027,7 +1027,7 @@ def read_flow_frame(frame):
     # Inpaint 'bad' areas of flow by referring to content weights.
     if frame > prev_frame:
         content_weights = get_content_weights(frame, prev_frame)
-        if content_weights:
+        if content_weights is not None:
             flow = optical_flow.blur_inpaint(flow, content_weights)
     return flow
 
