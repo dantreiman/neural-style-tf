@@ -1024,6 +1024,11 @@ def read_flow_frame(frame):
         invert_flow = -1
     path = os.path.join(get_flow_input_dir(), fn)
     flow = optical_flow.read_flow_file(path) * invert_flow
+    # Inpaint 'bad' areas of flow by referring to content weights.
+    if frame > prev_frame:
+        content_weights = get_content_weights(frame, prev_frame)
+        if content_weights:
+            flow = optical_flow.blur_inpaint(flow, content_weights)
     return flow
 
 
@@ -1033,16 +1038,7 @@ def get_prev_warped_frame(frame, content_img):
     #print('prev_img.shape: ' + str(prev_img.shape))
     #print('prev_img.max: ' + str(np.max(prev_img)))
     #print('content_img.max: ' + str(np.max(content_img)))
-    prev_frame = max(frame - 1, 0)
-    # backwards flow: current frame -> previous frame
-    invert_flow = 1
-    if args.backward_optical_flow_frmt:
-        fn = args.backward_optical_flow_frmt.format(frame, prev_frame)
-    elif args.forward_optical_flow_frmt:
-        fn = args.forward_optical_flow_frmt.format(frame, prev_frame)
-        invert_flow = -1
-    path = os.path.join(get_flow_input_dir(), fn)
-    flow = optical_flow.read_flow_file(path) * invert_flow
+    flow = read_flow_frame(frame)
     scale_f = args.superpixel_scale
     if scale_f > 1.0:
         print('Scaling optical flow up by %f' % scale_f, flush=True)
@@ -1050,10 +1046,6 @@ def get_prev_warped_frame(frame, content_img):
         flow = flow * scale_f  # Multiplies displacement vectors by scale factor.
     # Filter flow by thresholding on content image value.
     # Approximate luminance
-    if frame > prev_frame:
-        content_weights = get_content_weights(frame, prev_frame)
-        flow_mask = np.expand_dims(content_weights[:,:,0], 0)
-        flow = flow * flow_mask
     threshold = args.flow_filter_threshold
     if threshold >= 0:
         warped_content_img = optical_flow.warp_image(content_img[0], flow).astype(np.float32)
@@ -1073,13 +1065,11 @@ def get_prev_warped_frame(frame, content_img):
 
 
 def get_content_weights(frame, prev_frame):
+    """Get flow content weights (reliable.txt)"""
     forward_fn = args.content_weights_frmt.format(str(prev_frame), str(frame))
-    backward_fn = args.content_weights_frmt.format(str(frame), str(prev_frame))
     forward_path = os.path.join(get_flow_input_dir(), forward_fn)
-    backward_path = os.path.join(get_flow_input_dir(), backward_fn)
     forward_weights = optical_flow.read_weights_file(forward_path)
-    # backward_weights = optical_flow.read_weights_file(backward_path)
-    return forward_weights  # , backward_weights
+    return forward_weights
 
 
 def load_depth_file(path):
