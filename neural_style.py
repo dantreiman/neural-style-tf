@@ -1028,7 +1028,7 @@ def read_flow_frame(frame):
     if frame > prev_frame:
         content_weights = get_content_weights(frame, prev_frame)
         if content_weights is not None:
-            flow = optical_flow.blur_inpaint(flow, content_weights)
+            flow = optical_flow.blur_fill_flow(flow, content_weights)
     return flow
 
 
