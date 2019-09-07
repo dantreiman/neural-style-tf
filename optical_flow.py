@@ -70,7 +70,7 @@ def blur_inpaint(flow, mask):
 
     # All low-confidence regions have pixel value 255 - if the low confidence regions are too small don't bother.
     if np.sum(inverted_mask) < 10000:
-        return
+        return flow
 
     dilation_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
     dilated_mask = cv2.dilate(inverted_mask, dilation_kernel, iterations=2)
