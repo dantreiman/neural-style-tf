@@ -5,6 +5,8 @@ import struct
 
 
 def read_flow_file(path):
+    if path.endswith('.npy'):
+        return np.load(path)
     with open(path, 'rb') as f:
         # 4 bytes header
         header = struct.unpack('4s', f.read(4))[0]
