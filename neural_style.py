@@ -158,7 +158,7 @@ def parse_args():
     # optimizations
     parser.add_argument('--optimizer', type=str,
                         default='lbfgs',
-                        choices=['lbfgs', 'adam', 'mixed', 'gd', 'adagrad', 'nesterov'],
+                        choices=['lbfgs', 'adam', 'mixed', 'sgd', 'adagrad', 'adabound', 'nesterov'],
                         help='Loss minimization optimizer.  L-BFGS gives better results.  Adam uses less memory. (default|recommended: %(default)s)')
 
     parser.add_argument('--learning_rate_decay', type=str,
@@ -702,10 +702,12 @@ class Model:
             self.minimize_with_adam(self.loss)
         if args.optimizer in ('lbfgs', 'mixed'):
             self.minimize_with_lbfgs()
-        if args.optimizer == 'gd':
-            self.minimize_with_gd(self.loss)
+        if args.optimizer == 'sgd':
+            self.minimize_with_sgd(self.loss)
         if args.optimizer == 'adagrad':
             self.minimize_with_adagrad(self.loss)
+        if args.optimizer == 'adabound':
+            self.minimize_with_adabound(self.loss)
         if args.optimizer == 'nesterov':
             self.minimize_with_nesterov(self.loss)
         output_img = self.sess.run(stem['input'])
@@ -749,7 +751,7 @@ class Model:
                 return
             iterations += 1
 
-    def minimize_with_gd(self, loss):
+    def minimize_with_sgd(self, loss):
         if args.verbose: print('\nMINIMIZING LOSS USING: GRADIENT DESCENT OPTIMIZER')
         iterations = 0
         while (iterations < self.max_tf_iterations):
@@ -762,6 +764,17 @@ class Model:
 
     def minimize_with_adagrad(self, loss):
         if args.verbose: print('\nMINIMIZING LOSS USING: ADAGRAD OPTIMIZER')
+        iterations = 0
+        while (iterations < self.max_tf_iterations):
+            self.sess.run(self.train_op)
+            if iterations % args.print_iterations == 0 and args.verbose:
+                lr = self.sess.run(self.stem['learning_rate'])
+                curr_loss = self.sess.run(loss)
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
+            iterations += 1
+
+    def minimize_with_adabound(self, loss):
+        if args.verbose: print('\nMINIMIZING LOSS USING: ADABOUND OPTIMIZER')
         iterations = 0
         while (iterations < self.max_tf_iterations):
             self.sess.run(self.train_op)
@@ -792,10 +805,12 @@ class Model:
                          'disp': print_iterations})
         if args.optimizer in ('adam', 'mixed'):
             self.tf_optimizer = tf.train.AdamOptimizer(learning_rate)
-        if args.optimizer == 'gd':
+        if args.optimizer == 'sgd':
             self.tf_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
         if args.optimizer == 'adagrad':
             self.tf_optimizer = tf.train.AdagradOptimizer(learning_rate)
+        if atgs.optimizer == 'adabound':
+            self.tf_optimizer = AdaBoundOptimizer(learning_rate, final_lr=1e-1, beta_1=0.9, beta_2=0.999, gamma=1e-3, epsilon=1e-6, amsbound=False)
         if args.optimizer == 'nesterov':
             self.tf_optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
 
