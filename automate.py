@@ -16,6 +16,9 @@ RENDER_QUEUE = 'gpu.q'
 # SGE queue to encode movies on
 ENCODE_QUEUE = 'cpu.q'
 
+# Number of GPUs required for each job
+N_GPUS = 1
+
 # ---------------------------------------- Configurable Settings ----------------------------------------
 
 # Directory to store rendered image series.  Will be created if does not already exist.
@@ -28,10 +31,11 @@ final_render_dir = '/data/synced_outputs/leigh_woods/s06'
 output_prefix = 's06'
 
 # Path to the version of neural_style.py
-style_transfer_script_dir = '/data/home/dan.treiman/neural-style-z'
+style_transfer_script_dir = '/data/home/dan.treiman/neural-style-tf'
 
 # Start index to use to label output files
 output_index_start = 0
+
 
 # List of params to pass to the style transfer function.  Params take the form of tuples, where the first element is the
 # argument, the second is the value.  If the value is a list, then the script is run once for each element of the list.
@@ -87,6 +91,7 @@ def get_param(name):
 
 content_frame_frmt = get_param('--content_frame_frmt')
 content_frame_digits = get_param('--content_frame_digits')
+initial_frame = get_param('--initial_frame')
 
 # ---------------------------------------- Initialization ----------------------------------------
 
@@ -154,18 +159,18 @@ for i, c in enumerate(commands):
         '-terse',
         '-b', 'y',
         '-q', RENDER_QUEUE,
-        '-v', 'LD_LIBRARY_PATH=/home/ubuntu/src/cntk/bindings/python/cntk/libs:/usr/local/cuda/lib64:/usr/local/lib:/usr/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/mpi/lib:',
+        '-v', 'STYLE_GPUS_REQUIRED=%d,LD_LIBRARY_PATH=/home/ubuntu/src/cntk/bindings/python/cntk/libs:/usr/local/cuda/lib64:/usr/local/lib:/usr/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/mpi/lib:' % N_GPUS,
         '-o', os.path.join(job_log_path, '%s_%d_render.stdout' % (output_prefix, output_index)),
         '-e', os.path.join(job_log_path, '%s_%d_render.stderr' % (output_prefix, output_index))
     ]
     qsub_command.extend([str(a) for a in c])
 
-    log_file.write('\n%d render\n' % output_index)
-    log_file.write(' '.join(qsub_command))
-    log_file.write('\n')
-
     jid_string = subprocess.check_output(qsub_command)
     jid = int(jid_string)
+
+    log_file.write('\n%d render (job %d)\n' % (output_index, jid))
+    log_file.write(' '.join(qsub_command))
+    log_file.write('\n')
 
     movie_path = os.path.join(final_render_dir, '%s_%d.mp4' % (output_prefix, output_index))
     encode_qsub_command = [
@@ -180,6 +185,7 @@ for i, c in enumerate(commands):
         '-y',
         '-r', '25',
         '-f', 'image2',
+        '-start_number', str(initial_frame),
         '-i', os.path.join(output_dir, content_frame_frmt.format(
             '%0{}d'.format(content_frame_digits)
         )),
@@ -189,10 +195,11 @@ for i, c in enumerate(commands):
         movie_path
     ]
 
-    log_file.write('\n%d encode\n' % output_index)
+    encode_jid_string = subprocess.check_output(encode_qsub_command)
+    encode_jid = int(encode_jid_string)
+    log_file.write('\n%d encode (job %d)\n' % (output_index, encode_jid))
     log_file.write(' '.join(encode_qsub_command))
     log_file.write('\n\n')
-    subprocess.call(encode_qsub_command)
 
 
 log_file.close()

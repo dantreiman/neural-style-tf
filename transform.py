@@ -91,16 +91,44 @@ def random_scale(scales, seed=None):
     return inner
 
 
+def make_point_grid(ny, nx, h, w, margin_x=.2, margin_y=.2):
+    x = np.linspace(0.2, 0.8, ny)
+    y = np.linspace(0.2, 0.8, nx)
+    xv, yv = np.meshgrid(x, y)
+    return np.dstack([yv * h, xv * w]).reshape([nx*ny, 2])
+
+
+def random_warp(ny, nx, h, w, random_scale=64, seed=None):
+    def inner(t):
+        source_points = make_point_grid(ny, nx, h, w)
+        source_points_t = tf.constant(source_points, dtype=tf.float32)
+        dest_points_t = source_points_t + tf.random_normal(source_points.shape, seed=seed) * random_scale
+        n = tf.shape(t)[0]
+        warped_image_t, field_t = tf.contrib.image.sparse_image_warp(
+            t,
+            tf.tile(tf.expand_dims(source_points_t, 0), [n, 1, 1]),
+            tf.tile(tf.expand_dims(dest_points_t, 0), [n, 1, 1]),
+            interpolation_order=2,
+            regularization_weight=0.0,
+            num_boundary_points=2
+        )
+        return warped_image_t
+    return inner
+
+
+RANDOM_SEED = 47
+
+
 standard_transforms = [
     pad(12, mode="constant", constant_value=.5),
-    jitter(8),
-    random_scale([1 + (i - 5) / 50. for i in range(11)]),
-    random_rotate(list(range(-10, 11)) + 5 * [0]),
-    jitter(4),
+    jitter(8, seed=RANDOM_SEED),
+    random_scale([1 + (i - 1) / 50. for i in range(3)], seed=RANDOM_SEED),
+    random_rotate(list(range(-10, 11)) + 5 * [0], seed=RANDOM_SEED),
+    jitter(4, seed=RANDOM_SEED),
 ]
 
 
 translate_only = [
     pad(4),
-    jitter(8)
+    jitter(8, seed=RANDOM_SEED)
 ]

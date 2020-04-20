@@ -1,10 +1,28 @@
+import gpu_lock
+import os
+import sys
+import traceback
+
+# Lock GPUs if required.
+REQUIRED_GPUS = int(os.environ['STYLE_GPUS_REQUIRED']) if 'STYLE_GPUS_REQUIRED' in os.environ else 1
+
+selected_gpus = [0]
+
+print('Attempting to acquire %d gpus' % REQUIRED_GPUS, flush=True)
+selected_gpus = gpu_lock.acquire_gpus(REQUIRED_GPUS, timeout=60)
+print('Acquired GPUs: %s' % str(selected_gpus), flush=True)
+
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(g) for g in selected_gpus])
+print('CUDA_VISIBLE_DEVICES = %s' % ','.join([str(g) for g in selected_gpus]), flush=True)
+
+
 import tensorflow as tf
 import numpy as np
 import argparse
 import errno
 import time
 import cv2
-import os
 
 import exr
 import losses
@@ -22,17 +40,20 @@ def parse_args():
     parser.add_argument('--verbose', action='store_true',
                         help='Boolean flag indicating if statements should be printed to the console.')
 
+    parser.add_argument('--debug_loss', action='store_true',
+                        help='Boolean flag indicating if loss components should be printed.')
+
     parser.add_argument('--img_name', type=str,
                         default='result',
                         help='Filename of the output image.')
 
     # Each entry of style_imgs may be an image or video.
     # Filenames with a file extension are assumed to be images, directories are assumed to be videos.
-    parser.add_argument('--style_imgs', nargs='+', type=str,
+    parser.add_argument('--style_imgs', type=str,
                         help='Filenames of the style images (example: starry-night.jpg), or directories for video style.')
 
-    parser.add_argument('--style_imgs_weights', nargs='+', type=float,
-                        default=[1.0],
+    parser.add_argument('--style_imgs_weights', type=str,
+                        default='1.0',
                         help='Interpolation weights of each of the style images. (example: 0.5 0.5)')
 
     parser.add_argument('--content_img', type=str,
@@ -80,31 +101,35 @@ def parse_args():
                         choices=[1, 2, 3],
                         help='Different constants for the content layer loss function. (default: %(default)s)')
 
-    parser.add_argument('--content_layers', nargs='+', type=str,
-                        default=['conv4_2'],
+    parser.add_argument('--content_layers', type=str,
+                        default='conv4_2',
                         help='VGG19 layers used for the content image. (default: %(default)s)')
 
-    parser.add_argument('--style_layers', nargs='+', type=str,
-                        default=['relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1'],
+    parser.add_argument('--style_layers', type=str,
+                        default='relu1_1,relu2_1,relu3_1,relu4_1,relu5_1',
                         help='VGG19 layers used for the style image. (default: %(default)s)')
 
-    parser.add_argument('--content_layer_weights', nargs='+', type=float,
-                        default=[1.0],
+    parser.add_argument('--content_layer_weights', type=str,
+                        default='1.0',
                         help='Contributions (weights) of each content layer to loss. (default: %(default)s)')
 
-    parser.add_argument('--style_layer_weights', nargs='+', type=float,
-                        default=[0.2, 0.2, 0.2, 0.2, 0.2],
+    parser.add_argument('--style_layer_weights', type=str,
+                        default='0.2,0.2,0.2,0.2,0.2',
                         help='Contributions (weights) of each style layer to loss. (default: %(default)s)')
 
     parser.add_argument('--downsample_method', type=str, default='gaussian',
                         help='One of {gaussian, laplacian, bilinear}')
 
     parser.add_argument('--octaves', type=int, default=1,
-                        help='Each octave represents an additonal level of detail in an image pyramid.')
+                        help='Each octave represents an additional level of detail in an image pyramid.')
 
-    parser.add_argument('--octave_weights', nargs='+', type=float,
-                        default=[1.0],
-                        help='Contributions (weights) of each octave to loss. (default: %(default)s)')
+    parser.add_argument('--style_octave_weights', type=str,
+                        default='1.0',
+                        help='Contributions (weights) of each octave to style loss. (default: %(default)s)')
+
+    parser.add_argument('--content_octave_weights', type=str,
+                        default='1.0',
+                        help='Contributions (weights) of each octave to content loss. (default: %(default)s)')
 
     parser.add_argument('--correlate_octaves', action='store_true',
                         help='Compute correlations between multiple size scales.')
@@ -146,11 +171,6 @@ def parse_args():
                         choices=['avg', 'max'],
                         help='Type of pooling in convolutional neural network. (default: %(default)s)')
 
-    parser.add_argument('--device', type=str,
-                        default='/gpu:0',
-                        choices=['/gpu:0', '/cpu:0'],
-                        help='GPU or CPU mode.  GPU mode requires NVIDIA CUDA. (default|recommended: %(default)s)')
-
     parser.add_argument('--img_output_dir', type=str,
                         default='./image_output',
                         help='Relative or absolute directory path to output image and data.')
@@ -172,17 +192,24 @@ def parse_args():
     parser.add_argument('--early_stopping', action='store_true',
                         help='Stop each frame early if loss change is below a target. Only works for ADAM.')
 
-    parser.add_argument('--min_iterations', type=int, default=100,
-                        help='Minimum number of iterations.  Used with early stopping.')
+    parser.add_argument('--loss_target', type=float, default=4e8,
+                        help='Allow early stopping once overall loss gets below this level.')
 
     parser.add_argument('--transforms', type=str,
                         default='none',
-                        choices=['none', 'translate', 'standard'],
+                        choices=['none', 'translate', 'standard', 'warp'],
                         help='Applies random jitter or rotation to image to smooth out neural network artifacts. (default|recommended: %(default)s)')
+
+    parser.add_argument('--warp_sigma', type=float, default=64,
+                        help='The amount to warp content (applies to transforms=warp only)')
 
     parser.add_argument('--learning_rate', type=float,
                         default=1e0,
                         help='Learning rate parameter for the Adam optimizer. (default: %(default)s)')
+
+    parser.add_argument('--epsilon', type=float,
+                        default=1e-08,
+                        help='A small constant for numerical stability for ADAM optimizer. (default: %(default)s)')
 
     parser.add_argument('--max_iterations', type=int,
                         default=1000,
@@ -283,6 +310,16 @@ def parse_args():
 
     args = parser.parse_args()
 
+    # preprocess list args
+    args.style_imgs = args.style_imgs.split(',')
+    args.style_imgs_weights = [float(s) for s in args.style_imgs_weights.split(',')]
+    args.content_layers = args.content_layers.split(',')
+    args.style_layers = args.style_layers.split(',')
+    args.content_layer_weights = [float(s) for s in args.content_layer_weights.split(',')]
+    args.style_layer_weights = [float(s) for s in args.style_layer_weights.split(',')]
+    args.style_octave_weights = [float(s) for s in args.style_octave_weights.split(',')]
+    args.content_octave_weights = [float(s) for s in args.content_octave_weights.split(',')]
+
     # normalize weights
     args.style_layer_weights = normalize(args.style_layer_weights)
     args.content_layer_weights = normalize(args.content_layer_weights)
@@ -312,37 +349,18 @@ def mask_style_layer(a, x, mask_img):
     return a, x
 
 
-def weight_for_octave(o):
-    if o < len(args.octave_weights):
-        return args.octave_weights[o]
+def style_weight_for_octave(o):
+    if o < len(args.style_octave_weights):
+        return args.style_octave_weights[o]
     else:
-        return args.octave_weights[-1]
+        return args.style_octave_weights[-1]
 
 
-'''
-  'artistic style transfer for videos' loss functions
-'''
-
-
-def get_longterm_weights(i, j):
-    c_sum = 0.
-    for k in range(args.prev_frame_indices):
-        if i - k > i - j:
-            c_sum += get_content_weights(i, i - k)
-    c = get_content_weights(i, i - j)
-    c_max = tf.maximum(c - c_sum, 0.)
-    return c_max
-
-
-def sum_longterm_temporal_losses(sess, net, frame, input_img):
-    x = sess.run(stem['input'].assign(input_img))
-    loss = 0.
-    for j in range(args.prev_frame_indices):
-        prev_frame = frame - j
-        w = get_prev_warped_frame(frame)
-        c = get_longterm_weights(frame, prev_frame)
-        loss += temporal_loss(x, w, c)
-    return loss
+def content_weight_for_octave(o):
+    if o < len(args.content_octave_weights):
+        return args.content_octave_weights[o]
+    else:
+        return args.content_octave_weights[-1]
 
 
 '''
@@ -361,17 +379,17 @@ def read_image(path):
 
 def write_image_with_retries(path, img, retries=0, max_retries=2):
     if retries > max_retries:
-        print('Error: failed')
+        print('Error: failed', flush=True)
         raise OSError(errno.ENOENT, "Failed to write image to path: ", path)
         return
     cv2.imwrite(path, img)
     # Verify the image
     if not os.path.isfile(path):
-        print('Warning: failed to write to %s, retrying' % path)
+        print('Warning: failed to write to %s, retrying' % path, flush=True)
         return write_image_with_retries(path, img, retries + 1, max_retries)
     img_copy = cv2.imread(path, cv2.IMREAD_COLOR)
     if img_copy is None:
-        print('Warning: image written to %s not readable, retrying' % path)
+        print('Warning: image written to %s not readable, retrying' % path, flush=True)
         os.remove(path)
         return write_image_with_retries(path, img, retries + 1, max_retries)
 
@@ -420,26 +438,32 @@ def check_image(img, path):
         raise OSError(errno.ENOENT, "No such file", path)
 
 
+def gpu_device(index):
+    index = min(index, len(selected_gpus) - 1)
+    return tf.device('/device:GPU:%d' % index)
+
+
 class Model:
     def __init__(self):
-        with tf.device(args.device):
-            self.sess = tf.Session()
-            self.stem = {}  # The common portion of the neural network, before image pyramid
-            self.nets = []  # The networks for each layer of the pyramid, from largest to smallest
-            self.style_nets = [] # The style image networks for each layer of the pyramid.
-            self.update_content_ops = []
-            self.content_weights = None
-            self.pixel_age_frame = -1  # The frame index that we computed pixel age for last.
-            self.pixel_age = None  # The 'age' of each pixel, in frames.
-            self.loss = None
-            self.debug_losses = {}
-            self.tf_optimizer = None
-            self.sc_optimizer = None
-            self.tf_optimizer_initializer = None
-            self.train_op = None
-            self.max_tf_iterations = None  # Max iterations of whichever TF optimizer we're using.
-            self.max_bfgs_iterations = None  # Max iterations of L-BFGS.
-            self.set_max_iterations(args.max_iterations)
+        self.sess = tf.Session()
+        self.stem = {}  # The common portion of the neural network, before image pyramid
+        self.nets = []  # The networks for each layer of the pyramid, from largest to smallest
+        self.content_nets = []  # The content loss networks for each layer of the pyramid.
+        self.style_nets = [] # The style image networks for each layer of the pyramid.
+        self.content_weights = None
+        self.pixel_age_frame = -1  # The frame index that we computed pixel age for last.
+        self.age_per_frame = 4  # The amount to advance the 'age' of each pixel per frame.
+        self.max_age = self.age_per_frame * args.depth_lookback  # The maximum pixel age.
+        self.pixel_age = None  # The 'age' of each pixel, in frames.
+        self.loss = None
+        self.debug_losses = {}
+        self.tf_optimizer = None
+        self.sc_optimizer = None
+        self.tf_optimizer_initializer = None
+        self.train_op = None
+        self.max_tf_iterations = None  # Max iterations of whichever TF optimizer we're using.
+        self.max_bfgs_iterations = None  # Max iterations of L-BFGS.
+        self.set_max_iterations(args.max_iterations)
 
     def set_max_iterations(self, max_iterations):
         if args.optimizer == 'mixed':
@@ -456,13 +480,21 @@ class Model:
         stem['input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=True)
         stem['input_assign'] = stem['input'].assign(stem['input_in'])
 
+        stem['content_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into input
+        stem['content_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32), trainable=True)
+        stem['content_input_assign'] = stem['content_input'].assign(stem['content_input_in'])
+
         stem['prev_input_in'] = tf.placeholder(tf.float32, shape=(
             1, h, w, d))  # Used to feed previous image into temporal loss function.
         stem['prev_input'] = tf.Variable(np.zeros((1, h, w, d), dtype=np.float32),
                                          trainable=False)  # Previous input for temporal consistency
         stem['prev_input_assign'] = stem['prev_input'].assign(stem['prev_input_in'])
 
-        stem['style_input_in'] = tf.placeholder(tf.float32, shape=(1, h, w, d))  # Used to feed images into style
+        stem['temporal_weights_in'] = tf.placeholder(tf.float32, shape=(h, w))
+        stem['temporal_weights'] = tf.Variable(np.zeros((1, h, w, 1)), dtype=tf.float32, trainable=False)
+        stem['temporal_weights_assign'] = stem['temporal_weights'].assign(tf.expand_dims(tf.expand_dims(stem['temporal_weights_in'], 0), 3))
+
+        stem['style_input_in'] = tf.placeholder(tf.float32, shape=(n_styles, h, w, d))  # Used to feed images into style
         stem['style_input'] = tf.Variable(np.zeros((n_styles, h, w, d), dtype=np.float32), trainable=False)
         stem['style_input_assign'] = stem['style_input'].assign(stem['style_input_in'])
 
@@ -482,21 +514,37 @@ class Model:
             stem['learning_rate'] = tf.constant(args.learning_rate)
 
         transforms = []
+        transforms_resize_style = False
         if args.transforms == 'standard':
-            print('Using standard transforms.')
+            print('Using standard transforms.', flush=True)
             transforms = transform.standard_transforms
+            transforms_resize_style = True
         elif args.transforms == 'translate':
-            print('Using translate transform only.')
+            print('Using translate transform only.', flush=True)
             transforms = transform.translate_only
-        t_transformed = stem['input']
+        elif args.transforms == 'warp':
+            print('Using smooth warp transformation.', flush=True)
+            transforms = [transform.random_warp(3, 4, h, w, args.warp_sigma)]
+        # Join inputs together, to transform them all the same.
+        transform_inputs = [stem['input'], stem['content_input'], stem['prev_input']]
+        if transforms_resize_style:
+            transform_inputs.append(stem['style_input'])
+        input_transformed_t = tf.concat(transform_inputs, axis=0)
         for t in transforms:
-            t_transformed = t(t_transformed)
-        stem['input_transformed'] = t_transformed
+            input_transformed_t = t(input_transformed_t)
+        stem['input_transformed'] = input_transformed_t[:1]
+        stem['content_input_transformed'] = input_transformed_t[1:2]
+        stem['prev_input_transformed'] = input_transformed_t[2:3]
+        stem['style_input_transformed'] = input_transformed_t[3:] if transforms_resize_style else stem['style_input']  # Note: there might be multiple style images
         self.stem = stem
 
-        net, reuse_vars = vgg19.build_network(t_transformed, args.model_weights)
-        style_net, _ = vgg19.build_network(stem['style_input'], args.model_weights, reuse_vars=reuse_vars)
+        with gpu_device(0):
+            net, reuse_vars = vgg19.build_network(stem['input_transformed'], args.model_weights)
+            content_net, _ = vgg19.build_network(stem['content_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
+        with gpu_device(1):
+            style_net, _ = vgg19.build_network(stem['style_input_transformed'], args.model_weights, reuse_vars=reuse_vars)
         self.nets.append(net)
+        self.content_nets.append(content_net)
         self.style_nets.append(style_net)
 
         # Build image pyramid if more than one octave is specified.
@@ -506,32 +554,38 @@ class Model:
         elif args.downsample_method == 'resize':
             downsample = pyramid.bilinear
 
-        o = t_transformed
-        s = stem['style_input']
+        o = stem['input_transformed']
+        c = stem['content_input_transformed']
+        s = stem['style_input_transformed']
         for i in range(args.octaves - 1):
-            o = downsample(o)
-            s = downsample(s)
-            net, _ = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
-            style_net, _ = vgg19.build_network(s, args.model_weights, reuse_vars=reuse_vars)
+            with gpu_device(0):
+                o = downsample(o)
+                c = downsample(c)
+                net, _ = vgg19.build_network(o, args.model_weights, reuse_vars=reuse_vars)
+                content_net, _ = vgg19.build_network(c, args.model_weights, reuse_vars=reuse_vars)
+            with gpu_device(1):
+                s = downsample(s)
+                style_net, _ = vgg19.build_network(s, args.model_weights, reuse_vars=reuse_vars)
             self.nets.append(net)
+            self.content_nets.append(content_net)
             self.style_nets.append(style_net)
-        return self.stem, self.nets, self.style_nets
+        return self.stem, self.nets, self.content_nets, self.style_nets
 
     def load(self, init_img, content_img, style_imgs):
         """Build model and load weights.  Content image is only used for computing size."""
         # setup network
-        stem, nets, style_nets = self.build_network(content_img, n_styles=len(style_imgs))
+        n_styles = len(style_imgs)
+        stem, nets, content_nets, style_nets = self.build_network(content_img, n_styles=n_styles)
         # style loss
         if args.style_mask:
-            L_style = self.sum_masked_style_losses()
+            L_style = self.sum_masked_style_losses(n_styles)
         elif args.correlate_octaves:
-            L_style = self.sum_style_losses_correlate_octaves()
+            L_style = self.sum_style_losses_correlate_octaves(n_styles)
         else:
-            L_style = self.sum_style_losses()
+            L_style = self.sum_style_losses(n_styles)
 
         # content loss
-        L_content = self.setup_content_loss(content_img)
-
+        L_content = self.setup_content_loss()
         # denoising loss
         L_tv = tf.image.total_variation(stem['input'])
 
@@ -545,33 +599,33 @@ class Model:
         L_total += beta * L_style
         L_total += theta * L_tv
 
-        # self.debug_losses['content'] = L_content
-        # self.debug_losses['style'] = L_style
-        # self.debug_losses['tv'] = L_tv
+        self.debug_losses['content'] = L_content
+        self.debug_losses['style'] = L_style
+        self.debug_losses['tv'] = L_tv
 
         # video temporal loss
         if args.video and args.depth_input_dir is not None:
             gamma  = args.temporal_weight
             L_z_temporal = self.setup_z_temporal_loss(content_img.shape[1], content_img.shape[2])
-            # self.debug_losses['temporal'] = L_temporal
+            self.debug_losses['z_temporal'] = L_z_temporal
             L_total += gamma * L_z_temporal
 
         # optimization algorithm
         self.loss = L_total
         self.setup_optimizer(self.loss)
         if args.optimizer in ('adam', 'mixed', 'gd', 'adagrad', 'nesterov'):
-            self.train_op = self.tf_optimizer.minimize(self.loss, global_step=stem['global_step'])
+            self.train_op = self.tf_optimizer.minimize(self.loss, global_step=stem['global_step'], colocate_gradients_with_ops=True)
             self.reset_optimizer_op = tf.variables_initializer(self.tf_optimizer.variables())
         self.sess.run(tf.global_variables_initializer())
 
-    def sum_masked_style_losses(self):
+    def sum_masked_style_losses(self, n_styles):
         style_losses = []
         weights = args.style_imgs_weights
         masks = args.style_mask_imgs
-        for i, (img_weight, img_mask) in enumerate(zip(weights, masks)):
+        for i, img_weight, img_mask in zip(range(n_styles), weights, masks):
             style_loss = 0.
             for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
-                octave_weight = weight_for_octave(o)
+                octave_weight = style_weight_for_octave(o)
                 for layer, weight in zip(args.style_layers, args.style_layer_weights):
                     a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
                     x = net[layer]
@@ -581,50 +635,55 @@ class Model:
             style_losses.append(style_loss * img_weight)
         return tf.reduce_mean(style_losses)
 
-    def sum_style_losses(self):
+    def sum_style_losses(self, n_styles):
         style_losses = []
         weights = args.style_imgs_weights
-        for i, img_weight in enumerate(weights):
-            style_loss = 0.
-            for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
-                octave_weight = weight_for_octave(o)
-                for layer, weight in zip(args.style_layers, args.style_layer_weights):
-                    a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
-                    x = net[layer]
-                    style_loss += losses.style_layer_loss(a, x) * octave_weight * weight
-            style_loss /= float(len(args.style_layers))
-            style_losses.append(style_loss * img_weight)
-        return tf.reduce_mean(style_losses)
-
-    def sum_style_losses_correlate_octaves(self):
-        style_losses = []
-        weights = args.style_imgs_weights
-        for i, img_weight in enumerate(weights):
-            style_loss = 0.
-            for layer, weight in zip(args.style_layers, args.style_layer_weights):
-                a_o = []
-                x_o = []
+        with gpu_device(1):
+            for i, img_weight in zip(range(n_styles), weights):
+                style_loss = 0.
                 for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
-                    a = style_net[layer][i:i + 1]  # The activations of layer for the ith style image
-                    x = net[layer]
-                    n, h, w, c = a.get_shape()
-                    octave_weight = weight_for_octave(o)
-                    a_o.append(tf.reshape(a, [n, 1, h*w, c]) * octave_weight)
-                    x_o.append(tf.reshape(x, [n, 1, h*w, c]) * octave_weight)
-                style_loss += losses.style_layer_loss(tf.concat(a_o, 2), tf.concat(x_o, 2)) * weight
-            style_loss /= float(len(args.style_layers))
-            style_losses.append(style_loss * img_weight)
-        return tf.reduce_mean(style_losses)
+                    octave_weight = style_weight_for_octave(o)
+                    for layer, weight in zip(args.style_layers, args.style_layer_weights):
+                        a = style_net[layer][i:i+1]   # The activations of layer for the ith style image
+                        x = net[layer]
+                        style_loss += losses.style_layer_loss(a, x) * octave_weight * weight
+                style_loss /= float(len(args.style_layers))
+                style_losses.append(style_loss * img_weight)
+            mean_style_loss = tf.reduce_mean(style_losses)
+        return mean_style_loss
+
+    def sum_style_losses_correlate_octaves(self, n_styles):
+        style_losses = []
+        weights = args.style_imgs_weights
+        with gpu_device(1):
+            for i, img_weight in zip(range(n_styles), weights):
+                style_loss = 0.
+                for layer, weight in zip(args.style_layers, args.style_layer_weights):
+                    a_o = []
+                    x_o = []
+                    for o, (net, style_net) in enumerate(zip(self.nets, self.style_nets)):
+                        a = style_net[layer][i:i+1]  # The activations of layer for the ith style image
+                        x = net[layer]
+                        a_shape = tf.shape(a)
+                        n, h, w, c = (a_shape[0], a_shape[1], a_shape[2], a_shape[3])
+                        octave_weight = style_weight_for_octave(o)
+                        a_o.append(tf.reshape(a, [n, 1, h*w, c]) * octave_weight)
+                        x_o.append(tf.reshape(x, [n, 1, h*w, c]) * octave_weight)
+                    style_loss += losses.style_layer_loss(tf.concat(a_o, 2), tf.concat(x_o, 2)) * weight
+                style_loss /= float(len(args.style_layers))
+                style_losses.append(style_loss * img_weight)
+            mean_style_loss = tf.reduce_mean(style_losses)
+        return mean_style_loss
 
     def setup_z_temporal_loss(self, h, w):
-        self.pixel_age = np.zeros((h, w), dtype=np.uint8)
+        self.pixel_age = np.ones((h, w), dtype=np.uint8) * self.max_age
         self.pixel_age_frame = -1
-        return losses.weighted_content_loss(self.stem['input'], self.stem['prev_input'], self.stem['content_weights'])
+        with gpu_device(0):
+            z_temporal_loss = losses.weighted_content_loss(self.stem['input'], self.stem['prev_input'], self.stem['temporal_weights'])
+        return z_temporal_loss
 
     def update_z_temporal_loss(self, frame, content_img):
         frame_start = max(frame - args.depth_lookback, args.initial_frame, self.pixel_age_frame)
-        age_per_frame = 4
-        max_age = age_per_frame * args.depth_lookback
         pixel_age = self.pixel_age
         # Updates pixel age.
         for i in range(frame_start, frame):
@@ -634,55 +693,33 @@ class Model:
             flow = read_flow_frame(i)
             pixel_age_warped = optical_flow.warp_image(pixel_age, flow, interpolation=cv2.INTER_LINEAR)
             # Increment pixel age
-            pixel_age_warped = pixel_age_warped + age_per_frame
+            pixel_age_warped = pixel_age_warped + self.age_per_frame
             # Mark revealed pixels as new
             revealed = get_depth_mask(i, i - 1)
             pixel_age_warped[revealed] = 0
-            pixel_age = np.maximum(pixel_age_warped, max_age)
+            pixel_age = np.maximum(pixel_age_warped, self.max_age)
         self.pixel_age = pixel_age
         self.pixel_age_frame = frame
         # Update content weights
-        content_weights = 1.0 - np.sqrt(pixel_age.astype(np.float32) / max_age)
-        self.sess.run(self.stem['content_weights_assign'], feed_dict={self.stem['content_weights_in']: content_weights})
+        temporal_weights = 1.0 - np.sqrt(pixel_age.astype(np.float32) / self.max_age)
+        self.sess.run(self.stem['temporal_weights_assign'], feed_dict={self.stem['temporal_weights_in']: temporal_weights})
         self.sess.run(self.stem['prev_input_assign'], feed_dict={self.stem['prev_input_in']: content_img})
 
-    def setup_shortterm_temporal_loss(self):
-        c = get_content_weights(args.start_frame, args.start_frame + 1)
-        # Initializes content weights to all zeros for first frame
-        self.content_weights = tf.Variable(np.zeros_like(c), trainable=False)
-        return temporal_loss(self.stem['input'], self.stem['prev_input'], self.content_weights)
-
-    def update_shortterm_temporal_loss(self, frame):
-        if frame is None or frame == 0 or (frame == 1 and args.start_frame == 1):
-            return
-        prev_frame = max(frame - 1, 0)
-        w = get_prev_warped_frame(frame)
-        c = get_content_weights(frame, prev_frame)
-        self.sess.run(self.stem['prev_input_assign'], feed_dict={self.stem['prev_input_in']: w})
-        self.sess.run(self.content_weights.assign(c))
-
-    def setup_content_loss(self, content_img):
+    def setup_content_loss(self):
         stem = self.stem
-        self.sess.run(stem['input_assign'], feed_dict={stem['input_in']: content_img})
         content_losses = []
-        content_layers = []
-        content_vars = []
-        for net in self.nets:
-            for layer_name, weight in zip(args.content_layers, args.content_layer_weights):
-                layer_t = net[layer_name]
-                activations = self.sess.run(layer_t)
-                content_t = tf.Variable(activations, trainable=False)
-                content_losses.append(losses.content_layer_loss(content_t, layer_t) * weight)
-                content_layers.append(layer_t)
-                content_vars.append(content_t)
-        self.content_vars = content_vars
-        self.update_content_ops = [v.assign(l) for v, l in zip(content_vars, content_layers)]
-        content_loss = tf.reduce_mean(content_losses)
-        return content_loss
+        with gpu_device(0):
+            for o, (net, content_net) in enumerate(zip(self.nets, self.content_nets)):
+                octave_weight = content_weight_for_octave(o)
+                for layer_name, weight in zip(args.content_layers, args.content_layer_weights):
+                    a = content_net[layer_name]
+                    x = net[layer_name]
+                    content_losses.append(losses.content_layer_loss(a, x) * weight * octave_weight)
+            mean_content_loss = tf.reduce_mean(content_losses)
+        return mean_content_loss
 
     def update_content_loss(self, content_img):
-        self.sess.run(self.stem['input_assign'], feed_dict={self.stem['input_in']: content_img})
-        self.sess.run(self.update_content_ops)
+        self.sess.run(self.stem['content_input_assign'], feed_dict={self.stem['content_input_in']: content_img})
 
     def update_style_loss(self, style_images):
         style_images_stacked = np.concatenate(style_images, axis=0)
@@ -720,61 +757,72 @@ class Model:
         else:
             write_image_output(output_img, content_img, style_imgs, init_img)
 
+    def print_debug_loss(self):
+        for k, v in self.debug_losses.items():
+            print('%s: %.5f' % (k, self.sess.run(v)))
+
     def minimize_with_lbfgs(self):
-        if args.verbose: print('\nMINIMIZING LOSS USING: L-BFGS OPTIMIZER')
+        if args.verbose: print('\nMINIMIZING LOSS USING: L-BFGS OPTIMIZER', flush=True)
         self.sc_optimizer.minimize(self.sess)
 
     def should_stop_early(self, loss_history):
-        if len(loss_history) < args.min_iterations:
+        if len(loss_history) < 100:
             return False
-        y2 = loss_history[-1]
-        y1 = loss_history[-2]
-        pct_change = ((y2 - y1) / y1) * 100
-        # Stop early if the loss decreased and the decrease was less than 0.01%
-        return pct_change > -0.01 and pct_change < 0
+        mean_loss = np.mean(loss_history[-50:])  # Mean over last 50 loss values
+        return mean_loss < args.loss_target
 
     def minimize_with_adam(self, loss):
-        if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER')
+        if args.verbose: print('\nMINIMIZING LOSS USING: ADAM OPTIMIZER', flush=True)
+        if args.debug_loss: self.print_debug_loss()
         iterations = 0
         loss_history = []
         while (iterations < self.max_tf_iterations):
             _, l = self.sess.run([self.train_op, loss])
             loss_history.append(l)
-            # if iterations % args.print_iterations == 0:
-            #  for k,v in self.debug_losses.items():
-            #    print('%s: %.5f' % (k, self.sess.run(v)))
+            if iterations % args.print_iterations == 0 and args.debug_loss:
+                self.print_debug_loss()
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
-                print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr))
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr), flush=True)
             if args.early_stopping and self.should_stop_early(loss_history):
-                print('Stopping early')
+                print('Stopping early', flush=True)
                 return
             iterations += 1
 
+<<<<<<< HEAD
     def minimize_with_sgd(self, loss):
-        if args.verbose: print('\nMINIMIZING LOSS USING: GRADIENT DESCENT OPTIMIZER')
+        if args.verbose: print('\nMINIMIZING LOSS USING: GRADIENT DESCENT OPTIMIZER', flush=True)
         iterations = 0
+        loss_history = []
         while (iterations < self.max_tf_iterations):
-            self.sess.run(self.train_op)
+            _, l = self.sess.run([self.train_op, loss])
+            loss_history.append(l)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
-                curr_loss = self.sess.run(loss)
-                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr), flush=True)
+            if args.early_stopping and self.should_stop_early(loss_history):
+                print('Stopping early', flush=True)
+                return
             iterations += 1
 
     def minimize_with_adagrad(self, loss):
-        if args.verbose: print('\nMINIMIZING LOSS USING: ADAGRAD OPTIMIZER')
+        if args.verbose: print('\nMINIMIZING LOSS USING: ADAGRAD OPTIMIZER', flush=True)
         iterations = 0
+        loss_history = []
         while (iterations < self.max_tf_iterations):
-            self.sess.run(self.train_op)
+            _, l = self.sess.run([self.train_op, loss])
+            loss_history.append(l)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
-                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr), flush=True)
+            if args.early_stopping and self.should_stop_early(loss_history):
+                print('Stopping early', flush=True)
+                return
             iterations += 1
 
     def minimize_with_adabound(self, loss):
-        if args.verbose: print('\nMINIMIZING LOSS USING: ADABOUND OPTIMIZER')
+        if args.verbose: print('\nMINIMIZING LOSS USING: ADABOUND OPTIMIZER', flush=True)
         iterations = 0
         while (iterations < self.max_tf_iterations):
             self.sess.run(self.train_op)
@@ -785,14 +833,19 @@ class Model:
             iterations += 1
 
     def minimize_with_nesterov(self, loss):
-        if args.verbose: print('\nMINIMIZING LOSS USING: NESTEROV MOMENTUM')
+        if args.verbose: print('\nMINIMIZING LOSS USING: NESTEROV MOMENTUM', flush=True)
         iterations = 0
+        loss_history = []
         while (iterations < self.max_tf_iterations):
-            self.sess.run(self.train_op)
+            _, l = self.sess.run([self.train_op, loss])
+            loss_history.append(l)
             if iterations % args.print_iterations == 0 and args.verbose:
                 lr = self.sess.run(self.stem['learning_rate'])
                 curr_loss = self.sess.run(loss)
-                print("At iterate {}\tf= {}\tlr = {}".format(iterations, curr_loss, lr))
+                print("At iterate {}\tf= {}\tlr = {}".format(iterations, l, lr), flush=True)
+            if args.early_stopping and self.should_stop_early(loss_history):
+                print('Stopping early', flush=True)
+                return
             iterations += 1
 
     def setup_optimizer(self, loss):
@@ -804,13 +857,13 @@ class Model:
                 options={'maxiter': self.max_bfgs_iterations,
                          'disp': print_iterations})
         if args.optimizer in ('adam', 'mixed'):
-            self.tf_optimizer = tf.train.AdamOptimizer(learning_rate)
+            self.tf_optimizer = tf.train.AdamOptimizer(learning_rate, epsilon=args.epsilon)
         if args.optimizer == 'sgd':
             self.tf_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
         if args.optimizer == 'adagrad':
             self.tf_optimizer = tf.train.AdagradOptimizer(learning_rate)
         if atgs.optimizer == 'adabound':
-            self.tf_optimizer = AdaBoundOptimizer(learning_rate, final_lr=1e-1, beta_1=0.9, beta_2=0.999, gamma=1e-3, epsilon=1e-6, amsbound=False)
+            self.tf_optimizer = AdaBoundOptimizer(learning_rate, final_lr=1e-1, beta_1=0.9, beta_2=0.999, gamma=1e-3, args.epsilon=1e-6, amsbound=False)
         if args.optimizer == 'nesterov':
             self.tf_optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
 
@@ -900,7 +953,7 @@ def get_content_image(content_img_path):
     img = img.astype(np.float32)
     scale_f = args.superpixel_scale
     if scale_f > 1.0:
-        print('Scaling image up by %f' % scale_f)
+        print('Scaling image up by %f' % scale_f, flush=True)
         img = cv2.resize(img, (int(scale_f * img.shape[1]), int(scale_f * img.shape[0])), interpolation=cv2.INTER_CUBIC)
     h, w, d = img.shape
     mx = args.max_size
@@ -987,6 +1040,11 @@ def read_flow_frame(frame):
         invert_flow = -1
     path = os.path.join(get_flow_input_dir(), fn)
     flow = optical_flow.read_flow_file(path) * invert_flow
+    # Inpaint 'bad' areas of flow by referring to content weights.
+    if frame > prev_frame:
+        content_weights = get_content_weights(frame, prev_frame)
+        if content_weights is not None:
+            flow = optical_flow.blur_inpaint(flow, content_weights)
     return flow
 
 
@@ -996,19 +1054,10 @@ def get_prev_warped_frame(frame, content_img):
     #print('prev_img.shape: ' + str(prev_img.shape))
     #print('prev_img.max: ' + str(np.max(prev_img)))
     #print('content_img.max: ' + str(np.max(content_img)))
-    prev_frame = max(frame - 1, 0)
-    # backwards flow: current frame -> previous frame
-    invert_flow = 1
-    if args.backward_optical_flow_frmt:
-        fn = args.backward_optical_flow_frmt.format(frame, prev_frame)
-    elif args.forward_optical_flow_frmt:
-        fn = args.forward_optical_flow_frmt.format(frame, prev_frame)
-        invert_flow = -1
-    path = os.path.join(get_flow_input_dir(), fn)
-    flow = optical_flow.read_flow_file(path) * invert_flow
+    flow = read_flow_frame(frame)
     scale_f = args.superpixel_scale
     if scale_f > 1.0:
-        print('Scaling optical flow up by %f' % scale_f)
+        print('Scaling optical flow up by %f' % scale_f, flush=True)
         flow = optical_flow.resize_flow(flow, prev_img.shape[1], prev_img.shape[0])
         flow = flow * scale_f  # Multiplies displacement vectors by scale factor.
     # Filter flow by thresholding on content image value.
@@ -1032,13 +1081,11 @@ def get_prev_warped_frame(frame, content_img):
 
 
 def get_content_weights(frame, prev_frame):
+    """Get flow content weights (reliable.txt)"""
     forward_fn = args.content_weights_frmt.format(str(prev_frame), str(frame))
-    backward_fn = args.content_weights_frmt.format(str(frame), str(prev_frame))
     forward_path = os.path.join(get_flow_input_dir(), forward_fn)
-    backward_path = os.path.join(get_flow_input_dir(), backward_fn)
     forward_weights = optical_flow.read_weights_file(forward_path)
-    # backward_weights = optical_flow.read_weights_file(backward_path)
-    return forward_weights  # , backward_weights
+    return forward_weights
 
 
 def load_depth_file(path):
@@ -1112,7 +1159,7 @@ def render_video():
                                     args.content_frame_frmt.format(str(args.start_frame - 1).zfill(args.content_frame_digits)))
     assume_resume = os.path.isfile(prior_frame_path)
     for frame in range(args.start_frame, args.end_frame + 1):
-        print('\n---- RENDERING VIDEO FRAME: {}/{} ----\n'.format(frame, args.end_frame))
+        print('\n---- RENDERING VIDEO FRAME: {}/{} ----\n'.format(frame, args.end_frame), flush=True)
         if not assume_resume and frame == args.start_frame:
             content_frame = get_content_frame(frame)
             style_imgs = get_style_images_for_frame(content_frame, frame)
@@ -1124,7 +1171,7 @@ def render_video():
                 needs_load = False
             model.stylize(content_frame, style_imgs, init_img, frame)
             tock = time.time()
-            print('Frame {} elapsed time: {}'.format(frame, tock - tick))
+            print('Frame {} elapsed time: {}'.format(frame, tock - tick), flush=True)
         else:
             content_frame = get_content_frame(frame)
             style_imgs = get_style_images_for_frame(content_frame, frame)
@@ -1136,16 +1183,24 @@ def render_video():
                 needs_load = False
             model.stylize(content_frame, style_imgs, init_img, frame)
             tock = time.time()
-            print('Frame {} elapsed time: {}'.format(frame, tock - tick))
+            print('Frame {} elapsed time: {}'.format(frame, tock - tick), flush=True)
 
 
 def main():
     global args
-    args = parse_args()
-    if args.video:
-        render_video()
-    else:
-        render_single_image()
+    try:
+        args = parse_args()
+        if args.video:
+            render_video()
+        else:
+            render_single_image()
+    except Exception as e:
+        exc_info = sys.exc_info()
+        print('%s' % str(e))
+        traceback.print_exception(*exc_info)
+        del exc_info
+    finally:
+        gpu_lock.unlock_gpus(selected_gpus)
 
 
 if __name__ == '__main__':
