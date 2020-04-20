@@ -1093,7 +1093,7 @@ def render_video():
     model = Model()
     needs_load = True
     # If a frame file exists with the number before our start frame, assume we are resuming a killed job
-    prior_frame_path = os.path.join(args.video_input_dir,
+    prior_frame_path = os.path.join(args.video_output_dir,
                                     args.content_frame_frmt.format(str(args.start_frame - 1).zfill(args.content_frame_digits)))
     assume_resume = os.path.isfile(prior_frame_path)
     for frame in range(args.start_frame, args.end_frame + 1):
