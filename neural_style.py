@@ -441,7 +441,7 @@ def check_image(img, path):
 
 def gpu_device(index):
     index = min(index, len(selected_gpus) - 1)
-    return tf.device('/device:XLA_GPU:%d' % index)  # tf 1.15 'XLA_GPU', tf 1.12 'GPU'
+    return tf.device('/device:GPU:%d' % index)  # tf 1.15 'XLA_GPU', tf 1.12 'GPU'
 
 
 class Model:
@@ -863,7 +863,7 @@ class Model:
         if args.optimizer == 'adagrad':
             self.tf_optimizer = tf.train.AdagradOptimizer(learning_rate)
         if args.optimizer == 'adabound':
-            self.tf_optimizer = AdaBoundOptimizer(learning_rate, final_lr=1e-1, beta1=0.9, beta2=0.999, gamma=1e-3, epsilon=args.epsilon, amsbound=False)
+            self.tf_optimizer = AdaBoundOptimizer(learning_rate, final_lr=0.025, beta1=0.9, beta2=0.999, gamma=1e-3, epsilon=args.epsilon, amsbound=False)
         if args.optimizer == 'nesterov':
             self.tf_optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
 
