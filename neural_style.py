@@ -441,7 +441,7 @@ def check_image(img, path):
 
 def gpu_device(index):
     index = min(index, len(selected_gpus) - 1)
-    return tf.device('/device:GPU:%d' % index)
+    return tf.device('/device:XLA_GPU:%d' % index)
 
 
 class Model:
