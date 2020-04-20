@@ -24,6 +24,7 @@ import errno
 import time
 import cv2
 
+from ada_bound import AdaBoundOptimizer
 import exr
 import losses
 import optical_flow
@@ -862,7 +863,7 @@ class Model:
         if args.optimizer == 'adagrad':
             self.tf_optimizer = tf.train.AdagradOptimizer(learning_rate)
         if args.optimizer == 'adabound':
-            self.tf_optimizer = AdaBoundOptimizer(learning_rate, final_lr=1e-1, beta_1=0.9, beta_2=0.999, gamma=1e-3, epsilon=args.epsilon, amsbound=False)
+            self.tf_optimizer = AdaBoundOptimizer(learning_rate, final_lr=1e-1, beta1=0.9, beta2=0.999, gamma=1e-3, epsilon=args.epsilon, amsbound=False)
         if args.optimizer == 'nesterov':
             self.tf_optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
 
