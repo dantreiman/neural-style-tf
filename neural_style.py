@@ -789,7 +789,6 @@ class Model:
                 return
             iterations += 1
 
-<<<<<<< HEAD
     def minimize_with_sgd(self, loss):
         if args.verbose: print('\nMINIMIZING LOSS USING: GRADIENT DESCENT OPTIMIZER', flush=True)
         iterations = 0
@@ -862,8 +861,8 @@ class Model:
             self.tf_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
         if args.optimizer == 'adagrad':
             self.tf_optimizer = tf.train.AdagradOptimizer(learning_rate)
-        if atgs.optimizer == 'adabound':
-            self.tf_optimizer = AdaBoundOptimizer(learning_rate, final_lr=1e-1, beta_1=0.9, beta_2=0.999, gamma=1e-3, args.epsilon=1e-6, amsbound=False)
+        if args.optimizer == 'adabound':
+            self.tf_optimizer = AdaBoundOptimizer(learning_rate, final_lr=1e-1, beta_1=0.9, beta_2=0.999, gamma=1e-3, epsilon=args.epsilon, amsbound=False)
         if args.optimizer == 'nesterov':
             self.tf_optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
 
